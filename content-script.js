@@ -90,37 +90,11 @@ async function extractTextFromSelectors(
           if (el.parentElement) parentElements.add(el.parentElement);
         });
 
-        // Extract additional hidden text from parents
-        const additionalHiddenText = Array.from(parentElements)
-          .map((parent) => {
-            // Get all hidden elements that aren't part of our original selection
-            const hiddenChildren = Array.from(
-              parent.querySelectorAll("*")
-            ).filter((child) => {
-              const computedStyle = window.getComputedStyle(child);
-              return (
-                computedStyle.display === "none" &&
-                !Array.from(elements).includes(child)
-              );
-            });
 
-            return hiddenChildren
-              .map((hidden) => extractHiddenText(hidden))
-              .filter((t) => t)
-              .join("\n");
-          })
-          .filter((text) => text.length > 0);
 
         // Format and add the main extracted text
         if (extractedText.length > 0) {
           let output = `[Selector: ${selector}]\n${extractedText.join("\n\n")}`;
-
-          // Add additional hidden text if found
-          if (additionalHiddenText.length > 0) {
-            output +=
-              "\n\n[Hidden Content Found:]\n" +
-              additionalHiddenText.join("\n\n");
-          }
 
           allExtractedText.push(output);
         }
@@ -146,12 +120,7 @@ async function extractTextFromSelectors(
  */
 async function attemptToRevealHiddenContent(elements) {
   try {
-    // Find potential reveal buttons
-    const buttons = Array.from(
-      document.querySelectorAll(
-        'button, a, .btn, [role="button"], .show-more, .read-more, .expand'
-      )
-    );
+
     const relevantButtons = [];
 
     // Find buttons that might reveal content near our elements
