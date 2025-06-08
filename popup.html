@@ -1,72 +1,203 @@
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>Extract Questions</title>
     <style>
-        body { font-family: sans-serif; padding: 10px; width: 350px; }
-        button { margin: 5px 0; cursor: pointer; }
-        pre { white-space: pre-wrap; max-height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
-        .input-group { margin-bottom: 10px; position: relative; }
-        input { width: calc(100% - 65px); padding: 5px; box-sizing: border-box; margin-bottom: 5px; }
-        .button-group { display: flex; justify-content: space-between; margin: 10px 0; }
-        .visible { display: block; }
-        .hidden { display: none; }
-        #copy-btn { display: none; margin-left: 10px; }
-        .selector-group { display: flex; flex-wrap: wrap; align-items: center; }
-        .selector-group label { width: 100%; margin-bottom: 3px; }
-        .selector-actions { display: flex; align-items: center; }
-        .save-selector { background: #2196F3; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; line-height: 1; padding: 0; margin-left: 5px; cursor: pointer; }
-        .remove-selector { background: #f44336; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 16px; line-height: 1; padding: 0; margin-left: 5px; cursor: pointer; }
-        .selector-controls { display: flex; justify-content: space-between; margin-bottom: 10px; }
-        #add-selector-btn { background: #4CAF50; color: white; border: none; border-radius: 4px; padding: 5px 10px; flex: 1; margin-right: 5px; }
-        #manage-saved-btn { background: #2196F3; color: white; border: none; border-radius: 4px; padding: 5px 10px; flex: 1; margin-left: 5px; }
-        #saved-selectors-panel { margin-top: 10px; border-top: 1px solid #ccc; padding-top: 10px; }
-        #saved-selectors-panel h3 { margin-top: 0; font-size: 14px; }
-        .saved-selector-item { display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid #eee; }
-        .saved-selector-item:hover { background: #f5f5f5; }
-        .saved-selector-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .saved-selector-actions button { margin-left: 5px; background: none; border: none; cursor: pointer; font-size: 16px; }
-        .saved-selector-actions .use-selector { color: #4CAF50; }
-        .saved-selector-actions .delete-selector { color: #f44336; }
-        .options-group { margin: 10px 0; font-size: 14px; }
-        .options-group label { display: flex; align-items: center; }
-        .options-group input[type="checkbox"] { margin-right: 8px; }
+      body {
+        font-family: sans-serif;
+        padding: 10px;
+        width: 350px;
+      }
+      button {
+        margin: 5px 0;
+        cursor: pointer;
+      }
+      pre {
+        white-space: pre-wrap;
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+      }
+      .input-group {
+        margin-bottom: 10px;
+        position: relative;
+      }
+      input {
+        width: calc(100% - 65px);
+        padding: 5px;
+        box-sizing: border-box;
+        margin-bottom: 5px;
+      }
+      .button-group {
+        display: flex;
+        justify-content: space-between;
+        margin: 10px 0;
+      }
+      .visible {
+        display: block;
+      }
+      .hidden {
+        display: none;
+      }
+      #copy-btn {
+        display: none;
+        margin-left: 10px;
+      }
+      .selector-group {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .selector-group label {
+        width: 100%;
+        margin-bottom: 3px;
+      }
+      .selector-actions {
+        display: flex;
+        align-items: center;
+      }
+      .save-selector {
+        background: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+        line-height: 1;
+        padding: 0;
+        margin-left: 5px;
+        cursor: pointer;
+      }
+      .remove-selector {
+        background: #f44336;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        font-size: 16px;
+        line-height: 1;
+        padding: 0;
+        margin-left: 5px;
+        cursor: pointer;
+      }
+      .selector-controls {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      #add-selector-btn {
+        background: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 5px 10px;
+        flex: 1;
+        margin-right: 5px;
+      }
+      #manage-saved-btn {
+        background: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 5px 10px;
+        flex: 1;
+        margin-left: 5px;
+      }
+      #saved-selectors-panel {
+        margin-top: 10px;
+        border-top: 1px solid #ccc;
+        padding-top: 10px;
+      }
+      #saved-selectors-panel h3 {
+        margin-top: 0;
+        font-size: 14px;
+      }
+      .saved-selector-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+      }
+      .saved-selector-item:hover {
+        background: #f5f5f5;
+      }
+      .saved-selector-text {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .saved-selector-actions button {
+        margin-left: 5px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      .saved-selector-actions .use-selector {
+        color: #4caf50;
+      }
+      .saved-selector-actions .delete-selector {
+        color: #f44336;
+      }
+      .options-group {
+        margin: 10px 0;
+        font-size: 14px;
+      }
+      .options-group label {
+        display: flex;
+        align-items: center;
+      }
+      .options-group input[type="checkbox"] {
+        margin-right: 8px;
+      }
     </style>
-</head>
-<body>
-<div id="selectors-container">
-    <div class="input-group selector-group">
+  </head>
+  <body>
+    <div id="selectors-container">
+      <div class="input-group selector-group">
         <label>CSS Selector:</label>
-        <input type="text" class="selector-input" placeholder=".card-body.question-body" value=".card-body.question-body">
+        <input
+          type="text"
+          class="selector-input"
+          placeholder=".card-body.question-body"
+          value=".card-body.question-body"
+        />
         <div class="selector-actions">
-            <button class="save-selector" title="Save this selector">💾</button>
-            <button class="remove-selector" title="Remove this selector">×</button>
+          <button class="save-selector" title="Save this selector">💾</button>
+          <button class="remove-selector" title="Remove this selector"
+            >×</button
+          >
         </div>
+      </div>
     </div>
-</div>
-<div class="selector-controls">
-    <button id="add-selector-btn">+ Add Another Selector</button>
-    <button id="manage-saved-btn">Manage Saved Selectors</button>
-</div>
-<div id="saved-selectors-panel" class="hidden">
-    <h3>Saved Selectors</h3>
-    <div id="saved-selectors-list"></div>
-</div>
-<div class="button-group">
-    <button id="extract-btn">Extract Text</button>
-    <button id="copy-btn">Copy Text</button>
-</div>
-<div class="options-group">
-    <label>
-        <input type="checkbox" id="handle-reveal-buttons" checked>
+    <div class="selector-controls">
+      <button id="add-selector-btn">+ Add Another Selector</button>
+      <button id="manage-saved-btn">Manage Saved Selectors</button>
+    </div>
+    <div id="saved-selectors-panel" class="hidden">
+      <h3>Saved Selectors</h3>
+      <div id="saved-selectors-list"></div>
+    </div>
+    <div class="button-group">
+      <button id="extract-btn">Extract Text</button>
+      <button id="copy-btn">Copy Text</button>
+    </div>
+    <div class="options-group">
+      <label>
+        <input type="checkbox" id="handle-reveal-buttons" checked />
         Try to reveal hidden content
-    </label>
-    <label>
-        <input type="checkbox" id="include-hidden-text" checked>
+      </label>
+      <label>
+        <input type="checkbox" id="include-hidden-text" checked />
         Extract text from hidden elements
-    </label>
-</div>
-<pre id="output">Click "Extract Text" to get content.</pre>
-<script src="popup.js"></script>
-</body>
+      </label>
+    </div>
+    <pre id="output">Click "Extract Text" to get content.</pre>
+    <script src="popup.js"></script>
+  </body>
 </html>
