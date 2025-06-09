@@ -1,11 +1,11 @@
 // Storage keys constants
 const STORAGE_KEYS = {
-  SAVED_SELECTORS: "saved_selectors",
   LAST_USED_SELECTORS: "last_used_selectors",
-  LAST_TOPIC: "last_topic",
+  LAST_EXAM_NAME: "last_exam_name",
   LAST_PROMPT: "last_prompt",
   LAST_TEXT_TO_REMOVE: "last_text_to_remove",
   LAST_SELECTORS_TO_REMOVE: "last_selectors_to_remove",
+  LAST_TAGS: "last_tags",
   API_URL: "api_url"
 };
 
@@ -19,189 +19,38 @@ function handleStorageError(error) {
 
 // No longer needed - using a comma-separated input field now
 
-// Add save selector button event listener
-document.getElementById("save-selector-btn").addEventListener("click", () => {
+// Save selector functionality is now automatic through the extract button
+// and when the popup is closed. No manual save needed.
+
+// Automatically save CSS selector values when they change
+document.getElementById("css-selectors-input").addEventListener("change", (event) => {
   try {
-    const cssSelectorsInput = document.getElementById("css-selectors-input");
-    if (cssSelectorsInput) {
-      const selectorsValue = cssSelectorsInput.value.trim();
-      if (selectorsValue) {
-        // Split by comma and save each selector individually
-        const selectors = selectorsValue.split(',').map(s => s.trim()).filter(s => s.length > 0);
-        selectors.forEach(selector => saveSelector(selector));
-
-        // Visual feedback
-        const saveBtn = document.getElementById("save-selector-btn");
-        saveBtn.textContent = "Saved!";
-        saveBtn.style.background = "#4caf50";
-        setTimeout(() => {
-          saveBtn.textContent = "Save Current Selectors";
-          saveBtn.style.background = "";
-        }, 1500);
-      }
-    }
-  } catch (error) {
-    console.error("Error saving selectors:", error);
-  }
-});
-
-// Toggle saved selectors panel
-document.getElementById("manage-saved-btn").addEventListener("click", () => {
-  const panel = document.getElementById("saved-selectors-panel");
-  if (panel.classList.contains("hidden")) {
-    panel.classList.remove("hidden");
-    panel.classList.add("visible");
-    loadSavedSelectors();
-  } else {
-    panel.classList.remove("visible");
-    panel.classList.add("hidden");
-  }
-});
-
-// Event delegation for selector and text-to-remove actions
-document.addEventListener("click", (event) => {
-  // No longer needed - using a comma-separated input field now
-
-  // No longer needed - using a comma-separated input field now
-
-  // No longer needed - we now have a dedicated save button
-
-  // Use saved selector
-  if (event.target.classList.contains("use-selector")) {
-    const selectorItem = event.target.closest(".saved-selector-item");
-    const selectorValue = selectorItem.dataset.selector;
-
-    // Add to the comma-separated list
-    const cssSelectorsInput = document.getElementById("css-selectors-input");
-    if (cssSelectorsInput) {
-      const currentValue = cssSelectorsInput.value.trim();
-      if (currentValue) {
-        // Check if selector already exists in the list
-        const selectors = currentValue.split(',').map(s => s.trim());
-        if (!selectors.includes(selectorValue)) {
-          cssSelectorsInput.value = currentValue + ", " + selectorValue;
-        }
-      } else {
-        cssSelectorsInput.value = selectorValue;
-      }
-    }
-  }
-
-  // Delete saved selector
-  if (event.target.classList.contains("delete-selector")) {
-    const selectorItem = event.target.closest(".saved-selector-item");
-    const selectorValue = selectorItem.dataset.selector;
-    deleteSelector(selectorValue);
-    selectorItem.remove();
-  }
-});
-
-// No longer needed - using a comma-separated input field now
-
-// No longer needed - using a comma-separated input field now
-
-/**
- * Saves a selector to storage
- * @param {string} selector - The CSS selector to save
- */
-function saveSelector(selector) {
-  if (!selector || typeof selector !== "string" || !selector.trim()) {
-    console.warn("Attempted to save an invalid selector");
-    return;
-  }
-
-  chrome.storage.sync.get([STORAGE_KEYS.SAVED_SELECTORS], (result) => {
-    const savedSelectors = result[STORAGE_KEYS.SAVED_SELECTORS] || [];
-
-    // Don't add duplicates
-    if (!savedSelectors.includes(selector)) {
-      savedSelectors.push(selector);
+    const selectorsValue = event.target.value.trim();
+    if (selectorsValue) {
+      // Save current value to storage
       chrome.storage.sync.set(
-        { [STORAGE_KEYS.SAVED_SELECTORS]: savedSelectors },
+        { [STORAGE_KEYS.LAST_USED_SELECTORS]: selectorsValue },
         () => {
           if (chrome.runtime.lastError) {
             handleStorageError(chrome.runtime.lastError);
-            return;
-          }
-
-          // Update the saved selectors list if visible
-          if (
-            !document
-              .getElementById("saved-selectors-panel")
-              .classList.contains("hidden")
-          ) {
-            loadSavedSelectors();
           }
         }
       );
     }
-  });
-}
+  } catch (error) {
+    console.error("Error auto-saving selectors:", error);
+  }
+});
 
-/**
- * Deletes a selector from storage
- * @param {string} selector - The CSS selector to delete
- */
-function deleteSelector(selector) {
-  chrome.storage.sync.get([STORAGE_KEYS.SAVED_SELECTORS], (result) => {
-    if (chrome.runtime.lastError) {
-      handleStorageError(chrome.runtime.lastError);
-      return;
-    }
+// Event delegation for selector actions is no longer needed
+// as we're automatically saving the current value
 
-    const savedSelectors = result[STORAGE_KEYS.SAVED_SELECTORS] || [];
-    const updatedSelectors = savedSelectors.filter((s) => s !== selector);
+// No longer needed - using a comma-separated input field now
 
-    chrome.storage.sync.set(
-      { [STORAGE_KEYS.SAVED_SELECTORS]: updatedSelectors },
-      () => {
-        if (chrome.runtime.lastError) {
-          handleStorageError(chrome.runtime.lastError);
-        }
-      }
-    );
-  });
-}
+// No longer needed - using a comma-separated input field now
 
-/**
- * Loads and displays saved selectors from storage
- */
-function loadSavedSelectors() {
-  const savedSelectorsList = document.getElementById("saved-selectors-list");
-  savedSelectorsList.innerHTML = "";
-
-  chrome.storage.sync.get([STORAGE_KEYS.SAVED_SELECTORS], (result) => {
-    if (chrome.runtime.lastError) {
-      handleStorageError(chrome.runtime.lastError);
-      savedSelectorsList.innerHTML = "<p>Error loading saved selectors.</p>";
-      return;
-    }
-
-    const savedSelectors = result[STORAGE_KEYS.SAVED_SELECTORS] || [];
-
-    if (savedSelectors.length === 0) {
-      savedSelectorsList.innerHTML = "<p>No saved selectors yet.</p>";
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-    savedSelectors.forEach((selector) => {
-      const selectorItem = document.createElement("div");
-      selectorItem.className = "saved-selector-item";
-      selectorItem.dataset.selector = selector;
-      selectorItem.innerHTML = `
-                <div class="saved-selector-text" title="${selector}">${selector}</div>
-                <div class="saved-selector-actions">
-                    <button class="use-selector" title="Use this selector">➕</button>
-                    <button class="delete-selector" title="Delete this selector">🗑️</button>
-                </div>
-            `;
-      fragment.appendChild(selectorItem);
-    });
-
-    savedSelectorsList.appendChild(fragment);
-  });
-}
+// The saved selectors functionality has been removed
+// We now only save the last used selectors directly
 
 /**
  * Handles extracting text based on selected CSS selectors
@@ -230,11 +79,24 @@ document.getElementById("extract-btn").addEventListener("click", () => {
       return;
     }
 
-    // Get topic value
-    const topicInput = document.getElementById("topic-input");
-    const topic = topicInput.value.trim();
-    // Convert to number explicitly to ensure proper type
-    const topicNumeric = topic ? Number(topic) : 0;
+    // Get exam name value
+    const examNameInput = document.getElementById("exam-name-input");
+    if (!examNameInput) {
+      console.warn('Exam name input not found in the DOM');
+    }
+    const examName = examNameInput ? examNameInput.value.trim() : '';
+    console.log('Exam Name:', examName);
+
+    // Get tags value
+    const tagsInput = document.getElementById("tags-input");
+    if (!tagsInput) {
+      console.warn('Tags input not found in the DOM');
+    }
+    const tagsValue = tagsInput ? tagsInput.value.trim() : '';
+    const tagList = tagsValue
+      ? tagsValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
+      : [];
+    console.log('Tag List:', tagList);
 
     // Get prompt value
     const prompt = document.getElementById("prompt-input").value.trim();
@@ -261,11 +123,12 @@ document.getElementById("extract-btn").addEventListener("click", () => {
       "include-hidden-text"
     ).checked;
 
-    // Save the current selectors, topic, prompt, text-to-remove values, and selectors-to-remove as last used
+    // Save the current selectors, examName, tagList, prompt, text-to-remove values, and selectors-to-remove as last used
     chrome.storage.sync.set(
       { 
         [STORAGE_KEYS.LAST_USED_SELECTORS]: cssSelectorsValue,
-        [STORAGE_KEYS.LAST_TOPIC]: topic,
+        [STORAGE_KEYS.LAST_EXAM_NAME]: examName,
+        [STORAGE_KEYS.LAST_TAGS]: tagsValue,
         [STORAGE_KEYS.LAST_PROMPT]: prompt,
         [STORAGE_KEYS.LAST_TEXT_TO_REMOVE]: textToRemoveValue,
         [STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]: selectorsToRemoveValue
@@ -348,7 +211,8 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                 {
                   action: "extractText",
                   selectors: selectors,
-                  topic: topicNumeric, // Pass as numeric value explicitly
+                  examName: examName, // Pass exam name as string
+                  tagList: tagList, // Pass tag list as array
                   prompt: prompt,
                   textToRemoveValues: textToRemoveValues,
                   selectorsToRemove: selectorsToRemove, // Pass the selectors to remove as array
@@ -369,16 +233,11 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                       // Process successful response and update UI directly
                       const outputElem = document.getElementById("output");
 
-                      // If the response data is a string representing JSON, ensure topicId remains a number
+                      // If the response data is a string representing JSON
                       if (typeof response.data === 'string') {
                         try {
                           // Parse the JSON string to an object
                           const jsonData = JSON.parse(response.data);
-
-                          // Ensure topicId is a number before stringify again
-                          if (jsonData && 'topicId' in jsonData) {
-                            jsonData.topicId = Number(jsonData.topicId);
-                          }
 
                           // Convert back to a formatted string
                           outputElem.innerText = JSON.stringify(jsonData, null, 2);
@@ -779,10 +638,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // No need to initialize text-to-remove container anymore since we use a single input field
 
-    // Load stored values (selectors, topic, prompt, text-to-remove, selectors-to-remove)
+      // Load stored values (selectors, examName, tags, prompt, text-to-remove, selectors-to-remove)
     chrome.storage.sync.get([
       STORAGE_KEYS.LAST_USED_SELECTORS,
-      STORAGE_KEYS.LAST_TOPIC,
+      STORAGE_KEYS.LAST_EXAM_NAME,
+      STORAGE_KEYS.LAST_TAGS,
       STORAGE_KEYS.LAST_PROMPT,
       STORAGE_KEYS.LAST_TEXT_TO_REMOVE,
       STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE
@@ -793,14 +653,24 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // Set topic input value if available
-      const topicInput = document.getElementById("topic-input");
-      if (topicInput) {
-        if (result[STORAGE_KEYS.LAST_TOPIC] !== undefined && result[STORAGE_KEYS.LAST_TOPIC] !== null) {
-          topicInput.value = result[STORAGE_KEYS.LAST_TOPIC];
+      // Set exam name input value if available
+      const examNameInput = document.getElementById("exam-name-input");
+      if (examNameInput) {
+        if (result[STORAGE_KEYS.LAST_EXAM_NAME] !== undefined && result[STORAGE_KEYS.LAST_EXAM_NAME] !== null) {
+          examNameInput.value = result[STORAGE_KEYS.LAST_EXAM_NAME];
         }
       } else {
-        console.warn('Topic input element not found');
+        console.warn('Exam name input element not found');
+      }
+
+      // Set tags input value if available
+      const tagsInput = document.getElementById("tags-input");
+      if (tagsInput) {
+        if (result[STORAGE_KEYS.LAST_TAGS] !== undefined && result[STORAGE_KEYS.LAST_TAGS] !== null) {
+          tagsInput.value = result[STORAGE_KEYS.LAST_TAGS];
+        }
+      } else {
+        console.warn('Tags input element not found');
       }
 
       // Set prompt input value if available
@@ -877,27 +747,26 @@ document.addEventListener("DOMContentLoaded", () => {
       apiResponseContainer.classList.add("hidden");
     }
 
-    // Initialize UI visibility states
-    const savedSelectorsPanel = document.getElementById(
-      "saved-selectors-panel"
-    );
-    if (savedSelectorsPanel) {
-      savedSelectorsPanel.classList.add("hidden");
-      savedSelectorsPanel.classList.remove("visible");
-    }
+    // Saved selectors panel no longer needed
 
     // Fallback approach: Try loading each field individually
     setTimeout(() => {
       // Check if fields still need values
-      if (!document.getElementById("topic-input").value) {
-        loadStoredValueToInput(STORAGE_KEYS.LAST_TOPIC, "topic-input");
+      if (document.getElementById("exam-name-input") && !document.getElementById("exam-name-input").value) {
+        loadStoredValueToInput(STORAGE_KEYS.LAST_EXAM_NAME, "exam-name-input");
       }
 
-      if (!document.getElementById("text-to-remove-input").value) {
+      if (document.getElementById("tags-input") && !document.getElementById("tags-input").value) {
+        loadStoredValueToInput(STORAGE_KEYS.LAST_TAGS, "tags-input");
+      }
+
+      const textToRemoveInput = document.getElementById("text-to-remove-input");
+      if (textToRemoveInput && !textToRemoveInput.value) {
         loadStoredValueToInput(STORAGE_KEYS.LAST_TEXT_TO_REMOVE, "text-to-remove-input");
       }
 
-      if (!document.getElementById("selectors-to-remove-input").value) {
+      const selectorsToRemoveInput = document.getElementById("selectors-to-remove-input");
+      if (selectorsToRemoveInput && !selectorsToRemoveInput.value) {
         loadStoredValueToInput(STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE, "selectors-to-remove-input");
       }
     }, 100); // Small delay to ensure DOM is ready

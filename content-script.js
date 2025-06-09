@@ -20,14 +20,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Default to including hidden text if not specified
     const includeHiddenText = options.includeHiddenText !== false;
 
-    // Get topic, prompt, text-to-remove values, and selectors-to-remove if provided
-    const topic = request.topic || "";
+    // Get examName, tagList, prompt, text-to-remove values, and selectors-to-remove if provided
+    console.log('Request from popup:', request);
+    const examName = request.examName || "";
+    const tagList = request.tagList || [];
     const prompt = request.prompt || "";
     const textToRemoveValues = request.textToRemoveValues || [];
     const selectorsToRemove = request.selectorsToRemove || [];
 
+    console.log('Extracted parameters:', {
+      examName,
+      tagList,
+      prompt,
+      textToRemoveValues,
+      selectorsToRemove
+    });
+
     // Extract text based on provided selectors and options
-    extractTextFromSelectors(request.selectors, { includeHiddenText, topic, prompt, textToRemoveValues, selectorsToRemove })
+    extractTextFromSelectors(request.selectors, { includeHiddenText, examName, tagList, prompt, textToRemoveValues, selectorsToRemove })
       .then((result) => {
         sendResponse({
           success: true,
@@ -58,14 +68,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * @param {string[]} selectors - Array of CSS selectors to target
  * @param {Object} options - Extraction options
  * @param {boolean} options.includeHiddenText - Whether to include text from hidden elements
- * @param {string} options.topic - Topic ID to include with the extracted text
+ * @param {string} options.examName - Exam name to include with the extracted text
+ * @param {string[]} options.tagList - Array of tags to include with the extracted text
  * @param {string} options.prompt - Prompt text to include with the extracted text
  * @param {string[]} options.textToRemoveValues - Array of text patterns to remove from the extracted content
  * @returns {Promise<string>} - Promise resolving to formatted extracted text
  */
 async function extractTextFromSelectors(
   selectors,
-    options = { includeHiddenText: true, topic: "", prompt: "", textToRemoveValues: [], selectorsToRemove: [] }
+    options = { includeHiddenText: true, examName: "", tagList: [], prompt: "", textToRemoveValues: [], selectorsToRemove: [] }
 ) {
   try {
     let allExtractedText = [];
@@ -190,30 +201,14 @@ async function extractTextFromSelectors(
     }
 
     // Create a JSON response with the new required format
-    // Force topic to be a number and ensure it's not 0 unless actually empty
-    let topicIdValue = 0;
-    if (options.topic !== undefined && options.topic !== null) {
-      // Convert to number directly
-      topicIdValue = Number(options.topic);
 
-      // If it's NaN, try parsing it as an integer
-      if (isNaN(topicIdValue)) {
-        try {
-          // Try parsing as integer with different base
-          topicIdValue = parseInt(String(options.topic).trim(), 10);
-        } catch (e) {
-          topicIdValue = 0;
-        }
-      }
-    }
-
-    // Create response object with the properly processed topic ID
+    // Create response object with the new structure
     const responseObject = {
       prompt: options.prompt || "",
-      topicId: topicIdValue,
+      examName: options.examName || "",
       mcqTextList: mcqTextArray,
       unwantedTexts: options.textToRemoveValues || [],
-      tagList: [123, 456],  // Hardcoded as specified
+      tagList: options.tagList || [],
       userId: 2,            // Hardcoded as specified
       isPublic: true,       // Hardcoded as specified
       difficultyLevel: "EASY" // Hardcoded as specified

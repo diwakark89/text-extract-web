@@ -402,14 +402,7 @@
     </div>
   </div>
 
-  <div class="selector-controls">
-    <button id="save-selector-btn">Save Current Selectors</button>
-    <button id="manage-saved-btn">Manage Saved Selectors</button>
-  </div>
-  <div id="saved-selectors-panel" class="hidden">
-    <h3>Saved Selectors</h3>
-    <div id="saved-selectors-list"></div>
-  </div>
+  <!-- Selector controls removed as they are now automatically saved -->
   <div class="options-group">
     <label>
       <input type="checkbox" id="handle-reveal-buttons" checked />
@@ -424,7 +417,7 @@
   <div class="button-group">
     <button id="extract-btn"> Extract Text</button>
     <button id="copy-btn">Copy to Clipboard</button>
-    <button id="send-to-api-btn" class="hidden">🚀 Send to API</button>
+    <button id="send-to-api-btn" class="hidden">Send to API</button>
   </div>
 
   <div id="api-response-container" class="api-response-container hidden">
@@ -434,13 +427,25 @@
 
   <pre id="output">Click "Extract Text" to get content.</pre>
     <div class="input-group">
-      <label>Topic ID:</label>
+      <label>Exam Name:</label>
       <div class="input-container">
         <input
-          type="number"
-          id="topic-input"
-          placeholder="Enter topic ID"
+          type="text"
+          id="exam-name-input"
+          placeholder="Enter exam name (e.g. AWS Certified Cloud Practitioner)"
         />
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label>Tags:</label>
+      <div class="input-container">
+        <input
+          type="text"
+          id="tags-input"
+          placeholder="Enter comma-separated tags (e.g. AWS, Amazon)"
+        />
+        <p class="helper-text">Multiple tags can be separated by commas</p>
       </div>
     </div>
 
