@@ -340,6 +340,49 @@
     </style>
   </head>
   <body>
+  <div class="section-header">
+    <h3>CSS Selectors</h3>
+    <p class="helper-text">Specify CSS selectors to target the content you want to extract.</p>
+  </div>
+
+  <div class="input-group">
+    <label>CSS Selectors (comma-separated):</label>
+    <div class="input-container">
+      <input
+              type="text"
+              id="css-selectors-input"
+              placeholder=".card-body.question-body"
+              value=".card-body.question-body"
+      />
+      <p class="helper-text">Multiple selectors can be separated by commas</p>
+    </div>
+  </div>
+
+  <div class="selector-controls">
+    <button id="save-selector-btn">Save Current Selectors</button>
+    <button id="manage-saved-btn">Manage Saved Selectors</button>
+  </div>
+  <div id="saved-selectors-panel" class="hidden">
+    <h3>Saved Selectors</h3>
+    <div id="saved-selectors-list"></div>
+  </div>
+  <div class="options-group">
+    <label>
+      <input type="checkbox" id="handle-reveal-buttons" checked />
+      Try to reveal hidden content
+    </label>
+    <label>
+      <input type="checkbox" id="include-hidden-text" checked />
+      Extract text from hidden elements
+    </label>
+  </div>
+
+  <div class="button-group">
+    <button id="extract-btn"> Extract Text</button>
+    <button id="copy-btn">Copy to Clipboard</button>
+  </div>
+
+  <pre id="output">Click "Extract Text" to get content.</pre>
     <div class="input-group">
       <label>Topic ID:</label>
       <div class="input-container">
@@ -396,49 +439,7 @@
       </div>
     </div>
 
-    <div class="section-header">
-      <h3>CSS Selectors</h3>
-      <p class="helper-text">Specify CSS selectors to target the content you want to extract.</p>
-    </div>
 
-    <div class="input-group">
-      <label>CSS Selectors (comma-separated):</label>
-      <div class="input-container">
-        <input
-          type="text"
-          id="css-selectors-input"
-          placeholder=".card-body.question-body"
-          value=".card-body.question-body"
-        />
-        <p class="helper-text">Multiple selectors can be separated by commas</p>
-      </div>
-    </div>
-
-    <div class="selector-controls">
-      <button id="save-selector-btn">Save Current Selectors</button>
-      <button id="manage-saved-btn">Manage Saved Selectors</button>
-    </div>
-    <div id="saved-selectors-panel" class="hidden">
-      <h3>Saved Selectors</h3>
-      <div id="saved-selectors-list"></div>
-    </div>
-    <div class="options-group">
-      <label>
-        <input type="checkbox" id="handle-reveal-buttons" checked />
-        Try to reveal hidden content
-      </label>
-      <label>
-        <input type="checkbox" id="include-hidden-text" checked />
-        Extract text from hidden elements
-      </label>
-    </div>
-
-    <div class="button-group">
-      <button id="extract-btn"> Extract Text</button>
-      <button id="copy-btn">Copy to Clipboard</button>
-    </div>
-
-    <pre id="output">Click "Extract Text" to get content.</pre>
     <script src="popup.js"></script>
   </body>
 </html>
