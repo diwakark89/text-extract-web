@@ -324,7 +324,11 @@ document.getElementById("extract-btn").addEventListener("click", () => {
     }
 
     // Get topic value
-    const topic = document.getElementById("topic-input").value.trim();
+    const topicInput = document.getElementById("topic-input");
+    const topic = topicInput.value.trim();
+    // Convert to number explicitly to ensure proper type
+    const topicNumeric = topic ? Number(topic) : 0;
+    console.log("Topic value:", topic, "as number:", topicNumeric);
 
     // Get prompt value
     const prompt = document.getElementById("prompt-input").value.trim();
@@ -444,7 +448,7 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                 {
                   action: "extractText",
                   selectors: selectors,
-                  topic: topic,
+                  topic: topicNumeric, // Pass as numeric value explicitly
                   prompt: prompt,
                   textToRemoveValues: textToRemoveValues,
                   options: {
@@ -460,14 +464,41 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                   }
 
                   if (response && response.success) {
-                    // Process successful response and update UI directly
-                    const outputElem = document.getElementById("output");
-                    outputElem.innerText = response.data || "No content found.";
+                    try {
+                      // Process successful response and update UI directly
+                      const outputElem = document.getElementById("output");
 
-                    // Show copy button if we have content
-                    const copyBtn = document.getElementById("copy-btn");
-                    if (response.data && response.data.length > 0) {
-                      copyBtn.style.display = "block";
+                      // If the response data is a string representing JSON, ensure topicId remains a number
+                      if (typeof response.data === 'string') {
+                        try {
+                          // Parse the JSON string to an object
+                          const jsonData = JSON.parse(response.data);
+
+                          // Ensure topicId is a number before stringify again
+                          if (jsonData && 'topicId' in jsonData) {
+                            jsonData.topicId = Number(jsonData.topicId);
+                          }
+
+                          // Convert back to a formatted string
+                          outputElem.innerText = JSON.stringify(jsonData, null, 2);
+                        } catch (e) {
+                          // If parsing fails, just use the original string
+                          console.error('Error parsing JSON response:', e);
+                          outputElem.innerText = response.data || "No content found.";
+                        }
+                      } else {
+                        // Just use the data as is
+                        outputElem.innerText = response.data || "No content found.";
+                      }
+
+                      // Show copy button if we have content
+                      const copyBtn = document.getElementById("copy-btn");
+                      if (response.data && response.data.length > 0) {
+                        copyBtn.style.display = "block";
+                      }
+                    } catch (e) {
+                      console.error('Error processing response:', e);
+                      document.getElementById("output").innerText = response.data || "No content found.";
                     }
                   } else {
                     // Handle error

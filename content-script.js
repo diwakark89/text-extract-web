@@ -24,6 +24,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // Get topic, prompt, and text-to-remove values if provided
     const topic = request.topic || "";
+    console.log("Content script received topic:", topic, typeof topic);
+    // Additional checks for topic value
+    if (topic) {
+      console.log("Topic value details:", {
+        value: topic,
+        type: typeof topic,
+        asNumber: Number(topic),
+        isNaN: isNaN(Number(topic)),
+        parsed: parseInt(topic, 10)
+      });
+    }
     const prompt = request.prompt || "";
     const textToRemoveValues = request.textToRemoveValues || [];
 
@@ -146,9 +157,33 @@ async function extractTextFromSelectors(
     }
 
     // Create a JSON response with the new required format
+    // Debug: log the topic value before processing
+    console.log('Topic value before final processing:', options.topic, typeof options.topic);
+
+    // Force topic to be a number and ensure it's not 0 unless actually empty
+    let topicIdValue = 0;
+    if (options.topic !== undefined && options.topic !== null) {
+      // Convert to number directly
+      topicIdValue = Number(options.topic);
+      console.log('Converted topic value:', topicIdValue, typeof topicIdValue);
+
+      // If it's NaN, try parsing it as an integer
+      if (isNaN(topicIdValue)) {
+        try {
+          // Try parsing as integer with different base
+          topicIdValue = parseInt(String(options.topic).trim(), 10);
+          console.log('Parsed as int:', topicIdValue);
+        } catch (e) {
+          console.error('Error parsing topic:', e);
+          topicIdValue = 0;
+        }
+      }
+    }
+
+    // Create response object with the properly processed topic ID
     const responseObject = {
       prompt: options.prompt || "",
-      topicId: options.topic ? parseInt(options.topic, 10) || 0 : 0,
+      topicId: topicIdValue,
       mcqTextList: mcqTextArray,
       unwantedTexts: options.textToRemoveValues || [],
       tagList: [123, 456],  // Hardcoded as specified
@@ -157,7 +192,18 @@ async function extractTextFromSelectors(
       difficultyLevel: "EASY" // Hardcoded as specified
     };
 
-    return JSON.stringify(responseObject, null, 2);
+    // Debug: Log the final object to ensure topicId is set correctly
+    console.log('Final response object:', responseObject);
+
+    // Debug: Log the stringified JSON
+    const jsonString = JSON.stringify(responseObject, null, 2);
+    console.log('Stringified JSON:', jsonString);
+
+    // Double-check that topicId is still a number after parsing
+    const parsedBack = JSON.parse(jsonString);
+    console.log('Parsed back topicId:', parsedBack.topicId, typeof parsedBack.topicId);
+
+    return jsonString;
   } catch (error) {
     console.error("Error extracting text:", error);
     throw error;
