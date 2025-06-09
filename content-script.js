@@ -7,8 +7,6 @@
 
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log("Content script received message:", request);
-
   if (request.action === "extractText") {
     if (!request.selectors || !Array.isArray(request.selectors)) {
       sendResponse({
@@ -24,23 +22,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // Get topic, prompt, text-to-remove values, and selectors-to-remove if provided
     const topic = request.topic || "";
-    console.log("Content script received topic:", topic, typeof topic);
-    // Additional checks for topic value
-    if (topic) {
-      console.log("Topic value details:", {
-        value: topic,
-        type: typeof topic,
-        asNumber: Number(topic),
-        isNaN: isNaN(Number(topic)),
-        parsed: parseInt(topic, 10)
-      });
-    }
     const prompt = request.prompt || "";
     const textToRemoveValues = request.textToRemoveValues || [];
     const selectorsToRemove = request.selectorsToRemove || [];
-
-    console.log("Content script received text to remove values:", textToRemoveValues);
-    console.log("Content script received selectors to remove:", selectorsToRemove);
 
     // Extract text based on provided selectors and options
     extractTextFromSelectors(request.selectors, { includeHiddenText, topic, prompt, textToRemoveValues, selectorsToRemove })
@@ -95,8 +79,6 @@ async function extractTextFromSelectors(
         try {
           const elementsToRemove = document.querySelectorAll(selectorToRemove);
           if (elementsToRemove && elementsToRemove.length > 0) {
-            console.log(`Found ${elementsToRemove.length} elements matching selector-to-remove: ${selectorToRemove}`);
-
             // Extract text from each element that should be removed
             const textsFromSelector = Array.from(elementsToRemove)
               .map(el => {
@@ -108,15 +90,11 @@ async function extractTextFromSelectors(
 
             // Add all texts from this selector to the master list
             contentToRemove = [...contentToRemove, ...textsFromSelector];
-
-            console.log(`Content to remove from selector ${selectorToRemove}:`, textsFromSelector);
           }
         } catch (error) {
           console.error(`Error processing selector-to-remove ${selectorToRemove}:`, error);
         }
       }
-
-      console.log('Total content items to remove:', contentToRemove.length);
     }
 
     // Process each selector
@@ -213,24 +191,18 @@ async function extractTextFromSelectors(
     }
 
     // Create a JSON response with the new required format
-    // Debug: log the topic value before processing
-    console.log('Topic value before final processing:', options.topic, typeof options.topic);
-
     // Force topic to be a number and ensure it's not 0 unless actually empty
     let topicIdValue = 0;
     if (options.topic !== undefined && options.topic !== null) {
       // Convert to number directly
       topicIdValue = Number(options.topic);
-      console.log('Converted topic value:', topicIdValue, typeof topicIdValue);
 
       // If it's NaN, try parsing it as an integer
       if (isNaN(topicIdValue)) {
         try {
           // Try parsing as integer with different base
           topicIdValue = parseInt(String(options.topic).trim(), 10);
-          console.log('Parsed as int:', topicIdValue);
         } catch (e) {
-          console.error('Error parsing topic:', e);
           topicIdValue = 0;
         }
       }
@@ -248,17 +220,8 @@ async function extractTextFromSelectors(
       difficultyLevel: "EASY" // Hardcoded as specified
     };
 
-    // Debug: Log the final object to ensure topicId is set correctly
-    console.log('Final response object:', responseObject);
-
-    // Debug: Log the stringified JSON
+    // Convert to JSON string with formatting
     const jsonString = JSON.stringify(responseObject, null, 2);
-    console.log('Stringified JSON:', jsonString);
-
-    // Double-check that topicId is still a number after parsing
-    const parsedBack = JSON.parse(jsonString);
-    console.log('Parsed back topicId:', parsedBack.topicId, typeof parsedBack.topicId);
-
     return jsonString;
   } catch (error) {
     console.error("Error extracting text:", error);

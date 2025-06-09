@@ -125,7 +125,7 @@ function addSelectorToRemoveField(value = "") {
       : "";
 
     const newGroup = document.createElement("div");
-    newGroup.className = "selector-to-remove-group input-group";
+    newGroup.className = "selector-to-remove-group";
     newGroup.innerHTML = `
                 <label>Selector To Remove:</label>
                 <div class="selector-to-remove-input-container">
@@ -177,13 +177,15 @@ function addSelectorField(value = "") {
       : "";
 
     const newGroup = document.createElement("div");
-    newGroup.className = "selector-group input-group";
+    newGroup.className = "selector-group";
     newGroup.innerHTML = `
                 <label>CSS Selector:</label>
-                <input type="text" class="selector-input" placeholder="Enter CSS selector" value="${sanitizedValue}">
-                <div class="selector-actions">
-                    <button class="save-selector" title="Save this selector">💾</button>
-                    <button class="remove-selector" title="Remove this selector">×</button>
+                <div class="selector-input-container">
+                  <input type="text" class="selector-input" placeholder="Enter CSS selector" value="${sanitizedValue}">
+                  <div class="selector-actions">
+                      <button class="save-selector" title="Save this selector">💾</button>
+                      <button class="remove-selector" title="Remove this selector">×</button>
+                  </div>
                 </div>
             `;
 
@@ -329,7 +331,6 @@ document.getElementById("extract-btn").addEventListener("click", () => {
     const topic = topicInput.value.trim();
     // Convert to number explicitly to ensure proper type
     const topicNumeric = topic ? Number(topic) : 0;
-    console.log("Topic value:", topic, "as number:", topicNumeric);
 
     // Get prompt value
     const prompt = document.getElementById("prompt-input").value.trim();
@@ -341,15 +342,11 @@ document.getElementById("extract-btn").addEventListener("click", () => {
       ? textToRemoveValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
       : [];
 
-    console.log("Parsed text to remove values:", textToRemoveValues);
-
     // Get all selectors-to-remove values
     const selectorToRemoveInputs = document.querySelectorAll(".selector-to-remove-input");
     const selectorsToRemove = Array.from(selectorToRemoveInputs)
       .map(input => input.value.trim())
       .filter(value => value.length > 0);
-
-    console.log("Selectors to remove:", selectorsToRemove);
 
     // Get user extraction options
     const handleRevealButtons = document.getElementById(
@@ -404,11 +401,6 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                   action: "simulateRevealInteractions",
                 },
                 (simulateResponse) => {
-                  console.log(
-                    "Simulation result:",
-                    simulateResponse?.message || "No response"
-                  );
-
                   // Step 2: Try targeted reveal button clicks for each selector
                   const clickPromises = selectors.map((selector) => {
                     return new Promise((resolve) => {
@@ -420,18 +412,8 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                         },
                         (response) => {
                           if (chrome.runtime.lastError || !response) {
-                            console.log(
-                              "Note: Could not handle reveal buttons for selector:",
-                              selector,
-                              chrome.runtime.lastError || "No response"
-                            );
                             resolve();
                           } else {
-                            console.log(
-                              "Reveal button handling result for",
-                              selector + ":",
-                              response.message
-                            );
                             resolve();
                           }
                         }
@@ -509,6 +491,8 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                       const copyBtn = document.getElementById("copy-btn");
                       if (response.data && response.data.length > 0) {
                         copyBtn.style.display = "block";
+                        copyBtn.classList.add("visible");
+                        copyBtn.classList.remove("hidden");
                       }
                     } catch (e) {
                       console.error('Error processing response:', e);
@@ -636,7 +620,7 @@ document.addEventListener("DOMContentLoaded", () => {
         handleStorageError(chrome.runtime.lastError);
         // Fall back to default selector
         addSelectorField(".card-body.question-body");
-        addTextToRemoveField();
+        addSelectorToRemoveField();
         return;
       }
 

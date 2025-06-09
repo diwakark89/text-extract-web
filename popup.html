@@ -4,164 +4,298 @@
     <title>Extract Questions</title>
     <style>
       body {
-        font-family: sans-serif;
-        padding: 10px;
-        width: 350px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        padding: 16px;
+        width: 380px;
+        color: #333;
+        line-height: 1.4;
+        background-color: #f8f9fa;
       }
+
       button {
         margin: 5px 0;
         cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s ease;
       }
+
+      button:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+      }
+
       pre {
         white-space: pre-wrap;
         max-height: 400px;
         overflow-y: auto;
-        border: 1px solid #ccc;
-        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 12px;
+        background: #fff;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
       }
+
       .input-group {
-        margin-bottom: 15px;
+        margin-bottom: 18px;
         position: relative;
         display: flex;
         flex-direction: column;
       }
+
+      label {
+        font-weight: 500;
+        margin-bottom: 6px;
+        color: #555;
+        font-size: 14px;
+      }
+
+      .input-container {
+        position: relative;
+        width: 100%;
+      }
+
       input {
         width: 100%;
-        padding: 8px;
+        padding: 10px 12px;
         box-sizing: border-box;
-        margin-bottom: 5px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
+        border: 1px solid #cfd8dc;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: all 0.2s ease;
+        background-color: #fff;
       }
+
+      input:focus {
+        border-color: #2196f3;
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+      }
+
+      .helper-text {
+        font-size: 12px;
+        color: #757575;
+        margin-top: 4px;
+        margin-bottom: 8px;
+      }
+
       .button-group {
         display: flex;
         justify-content: space-between;
-        margin: 10px 0;
+        margin: 16px 0;
       }
+
       .visible {
         display: block;
       }
+
       .hidden {
         display: none;
       }
+
       #copy-btn {
         display: none;
         margin-left: 10px;
+        background: #5c6bc0;
       }
-      .selector-group {
+
+      #extract-btn {
+        background: #4caf50;
+        color: white;
+        padding: 10px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        flex-grow: 1;
+      }
+
+      .selector-group,
+      .selector-to-remove-group {
         display: flex;
-        flex-wrap: wrap;
+        flex-direction: column;
+        margin-bottom: 12px;
+        background: white;
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid #e0e0e0;
+      }
+
+      .selector-input-container,
+      .selector-to-remove-input-container {
+        display: flex;
         align-items: center;
       }
-      .selector-group label {
-        width: 100%;
-        margin-bottom: 3px;
+
+      .selector-input,
+      .selector-to-remove-input {
+        flex-grow: 1;
+        margin-bottom: 0;
       }
-      .selector-actions {
+
+      .selector-actions,
+      .selector-remove-actions {
         display: flex;
         align-items: center;
+        margin-left: 8px;
       }
+
       .save-selector {
         background: #2196f3;
         color: white;
         border: none;
         border-radius: 50%;
-        width: 20px;
-        height: 20px;
+        width: 24px;
+        height: 24px;
         font-size: 12px;
         line-height: 1;
         padding: 0;
-        margin-left: 5px;
+        margin-left: 6px;
         cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
+
       .remove-selector,
-      .remove-text-to-remove {
+      .remove-selector-to-remove {
         background: #f44336;
         color: white;
         border: none;
         border-radius: 50%;
-        width: 20px;
-        height: 20px;
+        width: 24px;
+        height: 24px;
         font-size: 16px;
         line-height: 1;
         padding: 0;
-        margin-left: 5px;
+        margin-left: 6px;
         cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
+
       .selector-controls {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 10px;
+        margin: 12px 0 16px 0;
       }
-      #add-selector-btn {
+
+      #add-selector-btn,
+      #add-selector-to-remove-btn {
         background: #4caf50;
         color: white;
         border: none;
         border-radius: 4px;
-        padding: 5px 10px;
+        padding: 8px 12px;
+        font-size: 13px;
         flex: 1;
-        margin-right: 5px;
+        text-align: center;
       }
+
       #manage-saved-btn {
         background: #2196f3;
         color: white;
         border: none;
         border-radius: 4px;
-        padding: 5px 10px;
+        padding: 8px 12px;
+        font-size: 13px;
         flex: 1;
-        margin-left: 5px;
+        margin-left: 8px;
       }
+
       #saved-selectors-panel {
-        margin-top: 10px;
-        border-top: 1px solid #ccc;
-        padding-top: 10px;
+        margin-top: 12px;
+        border-top: 1px solid #e0e0e0;
+        padding-top: 12px;
+        background: white;
+        border-radius: 6px;
+        padding: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
       }
+
       #saved-selectors-panel h3 {
         margin-top: 0;
         font-size: 14px;
+        color: #455a64;
       }
+
       .saved-selector-item {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 5px;
-        border-bottom: 1px solid #eee;
+        padding: 8px;
+        border-bottom: 1px solid #eeeeee;
       }
+
+      .saved-selector-item:last-child {
+        border-bottom: none;
+      }
+
       .saved-selector-item:hover {
         background: #f5f5f5;
       }
+
       .saved-selector-text {
         flex: 1;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        font-size: 13px;
+        font-family: monospace;
+        color: #455a64;
       }
+
       .section-header {
-        margin: 15px 0 5px 0;
+        margin: 22px 0 12px 0;
+        border-bottom: 1px solid #e0e0e0;
+        padding-bottom: 8px;
       }
+
       .section-header h3 {
         margin: 0 0 5px 0;
-        font-size: 14px;
-        color: #333;
+        font-size: 16px;
+        color: #455a64;
       }
+
       .saved-selector-actions button {
-        margin-left: 5px;
+        margin-left: 6px;
         background: none;
         border: none;
         cursor: pointer;
         font-size: 16px;
+        color: #546e7a;
+        transition: color 0.2s ease;
+      }
+
+      .saved-selector-actions button:hover {
+        color: #2196f3;
       }
 
       .options-group {
-        margin: 10px 0;
+        margin: 16px 0;
         font-size: 14px;
+        background: white;
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid #e0e0e0;
       }
+
       .options-group label {
         display: flex;
         align-items: center;
+        margin-bottom: 8px;
+        font-weight: normal;
       }
+
+      .options-group label:last-child {
+        margin-bottom: 0;
+      }
+
       .options-group input[type="checkbox"] {
-        margin-right: 8px;
+        margin-right: 10px;
+        width: 16px;
+        height: 16px;
       }
     </style>
   </head>
@@ -211,7 +345,7 @@
     </div>
 
     <div id="selectors-to-remove-container">
-      <div class="input-group selector-to-remove-group">
+      <div class="selector-to-remove-group">
         <label>Selector To Remove:</label>
         <div class="selector-to-remove-input-container">
           <input
@@ -236,7 +370,7 @@
     </div>
 
     <div id="selectors-container">
-      <div class="input-group selector-group">
+      <div class="selector-group">
         <label>CSS Selector:</label>
         <div class="selector-input-container">
           <input
@@ -261,16 +395,6 @@
       <h3>Saved Selectors</h3>
       <div id="saved-selectors-list"></div>
     </div>
-    <div class="button-group">
-      <button id="extract-btn">Extract Text</button>
-      <button id="copy-btn">Copy Text</button>
-    </div>
-
-    <div class="section-header">
-      <h3>CSS Selectors</h3>
-      <p class="helper-text">Specify CSS selectors to target the content you want to extract.</p>
-    </div>
-
     <div class="options-group">
       <label>
         <input type="checkbox" id="handle-reveal-buttons" checked />
@@ -281,6 +405,12 @@
         Extract text from hidden elements
       </label>
     </div>
+
+    <div class="button-group">
+      <button id="extract-btn">Extract Text</button>
+      <button id="copy-btn">Copy to Clipboard</button>
+    </div>
+
     <pre id="output">Click "Extract Text" to get content.</pre>
     <script src="popup.js"></script>
   </body>
