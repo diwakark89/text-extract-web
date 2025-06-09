@@ -4,7 +4,8 @@ const STORAGE_KEYS = {
   LAST_USED_SELECTORS: "last_used_selectors",
   LAST_TOPIC: "last_topic",
   LAST_PROMPT: "last_prompt",
-  LAST_TEXT_TO_REMOVE_VALUES: "last_text_to_remove_values",
+  LAST_TEXT_TO_REMOVE: "last_text_to_remove",
+  LAST_SELECTORS_TO_REMOVE: "last_selectors_to_remove",
 };
 
 // Error handling helper
@@ -17,9 +18,9 @@ document.getElementById("add-selector-btn").addEventListener("click", () => {
   addSelectorField();
 });
 
-// Add text-to-remove field
-document.getElementById("add-text-to-remove-btn").addEventListener("click", () => {
-  addTextToRemoveField();
+// Add selector-to-remove field
+document.getElementById("add-selector-to-remove-btn").addEventListener("click", () => {
+  addSelectorToRemoveField();
 });
 
 // Toggle saved selectors panel
@@ -48,14 +49,14 @@ document.addEventListener("click", (event) => {
     }
   }
 
-  // Remove text-to-remove input field
-  if (event.target.classList.contains("remove-text-to-remove")) {
-    const textToRemoveGroup = event.target.closest(".text-to-remove-group");
-    if (document.querySelectorAll(".text-to-remove-group").length > 1) {
-      textToRemoveGroup.remove();
+  // Remove selector-to-remove input field
+  if (event.target.classList.contains("remove-selector-to-remove")) {
+    const selectorToRemoveGroup = event.target.closest(".selector-to-remove-group");
+    if (document.querySelectorAll(".selector-to-remove-group").length > 1) {
+      selectorToRemoveGroup.remove();
     } else {
-      // Don't remove the last text-to-remove, just clear it
-      textToRemoveGroup.querySelector(".text-to-remove-input").value = "";
+      // Don't remove the last selector-to-remove, just clear it
+      selectorToRemoveGroup.querySelector(".selector-to-remove-input").value = "";
     }
   }
 
@@ -92,15 +93,15 @@ document.addEventListener("click", (event) => {
 });
 
 /**
- * Adds a new text-to-remove input field to the UI
- * @param {string} value - Initial value for the text-to-remove field
- * @returns {HTMLElement|null} - The created text-to-remove group element or null if creation failed
+ * Adds a new selector-to-remove input field to the UI
+ * @param {string} value - Initial value for the selector-to-remove field
+ * @returns {HTMLElement|null} - The created selector-to-remove group element or null if creation failed
  */
-function addTextToRemoveField(value = "") {
+function addSelectorToRemoveField(value = "") {
   try {
-    const container = document.getElementById("text-to-remove-container");
+    const container = document.getElementById("selectors-to-remove-container");
     if (!container) {
-      throw new Error("Text-to-remove container not found");
+      throw new Error("Selectors-to-remove container not found");
     }
 
     // Sanitize input value to prevent XSS
@@ -124,13 +125,13 @@ function addTextToRemoveField(value = "") {
       : "";
 
     const newGroup = document.createElement("div");
-    newGroup.className = "text-to-remove-group input-group";
+    newGroup.className = "selector-to-remove-group input-group";
     newGroup.innerHTML = `
-                <label>Text-To-Remove:</label>
-                <div class="text-to-remove-input-container">
-                  <input type="text" class="text-to-remove-input" placeholder="Enter text to remove" value="${sanitizedValue}">
-                  <div class="text-remove-actions">
-                      <button class="remove-text-to-remove" title="Remove this text">×</button>
+                <label>Selector To Remove:</label>
+                <div class="selector-to-remove-input-container">
+                  <input type="text" class="selector-to-remove-input" placeholder="Enter CSS selector to remove its content" value="${sanitizedValue}">
+                  <div class="selector-remove-actions">
+                      <button class="remove-selector-to-remove" title="Remove this selector">×</button>
                   </div>
                 </div>
             `;
@@ -138,7 +139,7 @@ function addTextToRemoveField(value = "") {
     container.appendChild(newGroup);
     return newGroup;
   } catch (error) {
-    console.error("Error adding text-to-remove field:", error);
+    console.error("Error adding selector-to-remove field:", error);
     return null;
   }
 }
@@ -333,11 +334,22 @@ document.getElementById("extract-btn").addEventListener("click", () => {
     // Get prompt value
     const prompt = document.getElementById("prompt-input").value.trim();
 
-    // Get all text-to-remove values
-    const textToRemoveInputs = document.querySelectorAll(".text-to-remove-input");
-    const textToRemoveValues = Array.from(textToRemoveInputs)
+    // Get comma-separated text-to-remove values
+    const textToRemoveInput = document.getElementById("text-to-remove-input");
+    const textToRemoveValue = textToRemoveInput.value.trim();
+    const textToRemoveValues = textToRemoveValue
+      ? textToRemoveValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
+      : [];
+
+    console.log("Parsed text to remove values:", textToRemoveValues);
+
+    // Get all selectors-to-remove values
+    const selectorToRemoveInputs = document.querySelectorAll(".selector-to-remove-input");
+    const selectorsToRemove = Array.from(selectorToRemoveInputs)
       .map(input => input.value.trim())
       .filter(value => value.length > 0);
+
+    console.log("Selectors to remove:", selectorsToRemove);
 
     // Get user extraction options
     const handleRevealButtons = document.getElementById(
@@ -347,13 +359,14 @@ document.getElementById("extract-btn").addEventListener("click", () => {
       "include-hidden-text"
     ).checked;
 
-    // Save the current selectors, topic, prompt, and text-to-remove values as last used
+    // Save the current selectors, topic, prompt, text-to-remove values, and selectors-to-remove as last used
     chrome.storage.sync.set(
       { 
         [STORAGE_KEYS.LAST_USED_SELECTORS]: selectors,
         [STORAGE_KEYS.LAST_TOPIC]: topic,
         [STORAGE_KEYS.LAST_PROMPT]: prompt,
-        [STORAGE_KEYS.LAST_TEXT_TO_REMOVE_VALUES]: textToRemoveValues
+        [STORAGE_KEYS.LAST_TEXT_TO_REMOVE]: textToRemoveValue,
+        [STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]: selectorsToRemove
       },
       () => {
         if (chrome.runtime.lastError) {
@@ -451,6 +464,7 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                   topic: topicNumeric, // Pass as numeric value explicitly
                   prompt: prompt,
                   textToRemoveValues: textToRemoveValues,
+                  selectorsToRemove: selectorsToRemove, // Pass the selectors to remove as array
                   options: {
                     includeHiddenText: includeHiddenText,
                   },
@@ -524,11 +538,7 @@ document.getElementById("extract-btn").addEventListener("click", () => {
           "Error executing script. Please refresh and try again.";
       }
 
-      // Set prompt input value if available
-      const promptInput = document.getElementById("prompt-input");
-      if (promptInput && result[STORAGE_KEYS.LAST_PROMPT]) {
-        promptInput.value = result[STORAGE_KEYS.LAST_PROMPT];
-      }
+      // No need to set these values here as they are already set during initialization
     });
   } catch (error) {
     console.error("Error during text extraction:", error);
@@ -612,18 +622,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     container.innerHTML = "";
 
-    // Initialize text-to-remove container
-    const textToRemoveContainer = document.getElementById("text-to-remove-container");
-    if (textToRemoveContainer) {
-      textToRemoveContainer.innerHTML = "";
-    }
+    // No need to initialize text-to-remove container anymore since we use a single input field
 
-    // Load stored values (selectors, topic, prompt, text-to-remove values)
+    // Load stored values (selectors, topic, prompt, text-to-remove, selectors-to-remove)
     chrome.storage.sync.get([
       STORAGE_KEYS.LAST_USED_SELECTORS,
       STORAGE_KEYS.LAST_TOPIC,
       STORAGE_KEYS.LAST_PROMPT,
-      STORAGE_KEYS.LAST_TEXT_TO_REMOVE_VALUES
+      STORAGE_KEYS.LAST_TEXT_TO_REMOVE,
+      STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE
     ], (result) => {
       if (chrome.runtime.lastError) {
         handleStorageError(chrome.runtime.lastError);
@@ -645,19 +652,32 @@ document.addEventListener("DOMContentLoaded", () => {
         promptInput.value = result[STORAGE_KEYS.LAST_PROMPT];
       }
 
-      // Add saved text-to-remove values or a single empty field
-      const savedTextToRemoveValues = result[STORAGE_KEYS.LAST_TEXT_TO_REMOVE_VALUES] || [];
+      // Set text-to-remove input value if available
+      const textToRemoveInput = document.getElementById("text-to-remove-input");
+      if (textToRemoveInput && result[STORAGE_KEYS.LAST_TEXT_TO_REMOVE]) {
+        textToRemoveInput.value = result[STORAGE_KEYS.LAST_TEXT_TO_REMOVE];
+      }
 
-      if (savedTextToRemoveValues.length > 0) {
-        // Add each saved text-to-remove value
-        savedTextToRemoveValues.forEach(value => {
-          addTextToRemoveField(value);
+      // Initialize selectors-to-remove container
+      const selectorsToRemoveContainer = document.getElementById("selectors-to-remove-container");
+      if (selectorsToRemoveContainer) {
+        selectorsToRemoveContainer.innerHTML = "";
+      }
+
+      // Add saved selectors-to-remove values or a single empty field
+      const savedSelectorsToRemove = result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE] || [];
+
+      if (savedSelectorsToRemove.length > 0) {
+        // Add each saved selector-to-remove value
+        savedSelectorsToRemove.forEach(value => {
+          addSelectorToRemoveField(value);
         });
       } else {
         // Add a single empty field if none saved
-        addTextToRemoveField();
+        addSelectorToRemoveField();
       }
 
+      // Initialize CSS selectors for extraction
       const lastUsedSelectors = result[STORAGE_KEYS.LAST_USED_SELECTORS] || [
         ".card-body.question-body",
       ];

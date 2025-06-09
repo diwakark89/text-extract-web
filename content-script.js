@@ -22,7 +22,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Default to including hidden text if not specified
     const includeHiddenText = options.includeHiddenText !== false;
 
-    // Get topic, prompt, and text-to-remove values if provided
+    // Get topic, prompt, text-to-remove values, and selectors-to-remove if provided
     const topic = request.topic || "";
     console.log("Content script received topic:", topic, typeof topic);
     // Additional checks for topic value
@@ -37,9 +37,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     const prompt = request.prompt || "";
     const textToRemoveValues = request.textToRemoveValues || [];
+    const selectorsToRemove = request.selectorsToRemove || [];
+
+    console.log("Content script received text to remove values:", textToRemoveValues);
+    console.log("Content script received selectors to remove:", selectorsToRemove);
 
     // Extract text based on provided selectors and options
-    extractTextFromSelectors(request.selectors, { includeHiddenText, topic, prompt, textToRemoveValues })
+    extractTextFromSelectors(request.selectors, { includeHiddenText, topic, prompt, textToRemoveValues, selectorsToRemove })
       .then((result) => {
         sendResponse({
           success: true,
@@ -77,10 +81,43 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  */
 async function extractTextFromSelectors(
   selectors,
-  options = { includeHiddenText: true, topic: "", prompt: "", textToRemoveValues: [] }
+    options = { includeHiddenText: true, topic: "", prompt: "", textToRemoveValues: [], selectorsToRemove: [] }
 ) {
   try {
     let allExtractedText = [];
+
+    // First, if selectors-to-remove are specified, get their content to exclude later
+    let contentToRemove = [];
+    if (options.selectorsToRemove && options.selectorsToRemove.length > 0) {
+      for (const selectorToRemove of options.selectorsToRemove) {
+        if (!selectorToRemove) continue;
+
+        try {
+          const elementsToRemove = document.querySelectorAll(selectorToRemove);
+          if (elementsToRemove && elementsToRemove.length > 0) {
+            console.log(`Found ${elementsToRemove.length} elements matching selector-to-remove: ${selectorToRemove}`);
+
+            // Extract text from each element that should be removed
+            const textsFromSelector = Array.from(elementsToRemove)
+              .map(el => {
+                const visibleText = el.innerText.trim();
+                const hiddenText = extractHiddenText(el);
+                return visibleText || hiddenText || "";
+              })
+              .filter(text => text.length > 0);
+
+            // Add all texts from this selector to the master list
+            contentToRemove = [...contentToRemove, ...textsFromSelector];
+
+            console.log(`Content to remove from selector ${selectorToRemove}:`, textsFromSelector);
+          }
+        } catch (error) {
+          console.error(`Error processing selector-to-remove ${selectorToRemove}:`, error);
+        }
+      }
+
+      console.log('Total content items to remove:', contentToRemove.length);
+    }
 
     // Process each selector
     for (const selector of selectors) {
@@ -124,6 +161,25 @@ async function extractTextFromSelectors(
     // Process text-to-remove patterns
     let extractedText = allExtractedText.join("\n\n---\n\n");
 
+    // First remove content from selector-to-remove if specified
+    if (contentToRemove && contentToRemove.length > 0) {
+      contentToRemove.forEach(content => {
+        if (content) {
+          try {
+            // Escape special regex characters to treat the content as literal text
+            const safePattern = content.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            extractedText = extractedText.replace(new RegExp(safePattern, 'g'), '');
+            console.log(`Removed content matching: ${content.substring(0, 30)}...`);
+          } catch (e) {
+            console.error('Error removing content:', e);
+            // Fallback to simple string replacement if regex fails
+            extractedText = extractedText.split(content).join('');
+          }
+        }
+      });
+    }
+
+    // Then process text-to-remove patterns
     if (options.textToRemoveValues && options.textToRemoveValues.length > 0) {
       options.textToRemoveValues.forEach(pattern => {
         if (pattern) {

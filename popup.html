@@ -193,24 +193,41 @@
       <p class="helper-text">Specify text patterns that should be removed from the extracted content.</p>
     </div>
 
-    <div id="text-to-remove-container">
-      <div class="input-group text-to-remove-group">
-        <label>Text-To-Remove:</label>
-        <div class="text-to-remove-input-container">
+    <div class="input-group">
+      <label>Text To Remove (comma-separated):</label>
+      <div class="input-container">
+        <input
+          type="text"
+          id="text-to-remove-input"
+          placeholder="Enter comma-separated texts to remove"
+        />
+        <p class="helper-text">Multiple values can be separated by commas</p>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h3>Selectors To Remove</h3>
+      <p class="helper-text">Content from these selectors will be removed from extracted text</p>
+    </div>
+
+    <div id="selectors-to-remove-container">
+      <div class="input-group selector-to-remove-group">
+        <label>Selector To Remove:</label>
+        <div class="selector-to-remove-input-container">
           <input
             type="text"
-            class="text-to-remove-input"
-            placeholder="Enter text to remove"
+            class="selector-to-remove-input"
+            placeholder="Enter CSS selector to remove its content"
           />
-          <div class="text-remove-actions">
-            <button class="remove-text-to-remove" title="Remove this text">×</button>
+          <div class="selector-remove-actions">
+            <button class="remove-selector-to-remove" title="Remove this selector">×</button>
           </div>
         </div>
       </div>
     </div>
 
     <div class="selector-controls">
-      <button id="add-text-to-remove-btn">+ Add Another Text To Remove</button>
+      <button id="add-selector-to-remove-btn">+ Add Another Selector To Remove</button>
     </div>
 
     <div class="section-header">
