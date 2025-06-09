@@ -22,8 +22,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Default to including hidden text if not specified
     const includeHiddenText = options.includeHiddenText !== false;
 
+    // Get topic, prompt, and text-to-remove values if provided
+    const topic = request.topic || "";
+    const prompt = request.prompt || "";
+    const textToRemoveValues = request.textToRemoveValues || [];
+
     // Extract text based on provided selectors and options
-    extractTextFromSelectors(request.selectors, { includeHiddenText })
+    extractTextFromSelectors(request.selectors, { includeHiddenText, topic, prompt, textToRemoveValues })
       .then((result) => {
         sendResponse({
           success: true,
@@ -54,11 +59,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * @param {string[]} selectors - Array of CSS selectors to target
  * @param {Object} options - Extraction options
  * @param {boolean} options.includeHiddenText - Whether to include text from hidden elements
+ * @param {string} options.topic - Topic ID to include with the extracted text
+ * @param {string} options.prompt - Prompt text to include with the extracted text
+ * @param {string[]} options.textToRemoveValues - Array of text patterns to remove from the extracted content
  * @returns {Promise<string>} - Promise resolving to formatted extracted text
  */
 async function extractTextFromSelectors(
   selectors,
-  options = { includeHiddenText: true }
+  options = { includeHiddenText: true, topic: "", prompt: "", textToRemoveValues: [] }
 ) {
   try {
     let allExtractedText = [];
@@ -90,23 +98,66 @@ async function extractTextFromSelectors(
           if (el.parentElement) parentElements.add(el.parentElement);
         });
 
-
-
-        // Format and add the main extracted text
+        // Format and add each extracted text item individually to the array
+        // This way each extracted element becomes its own item in mcqTextList
         if (extractedText.length > 0) {
-          let output = `[Selector: ${selector}]\n${extractedText.join("\n\n")}`;
-
-          allExtractedText.push(output);
+          extractedText.forEach(text => {
+            allExtractedText.push(text);
+          });
         }
       } catch (error) {
         console.error(`Error with selector ${selector}:`, error);
       }
     }
 
-    return (
-      allExtractedText.join("\n\n---\n\n") ||
-      "No content found with the provided selectors."
-    );
+    // Process text-to-remove patterns
+    let extractedText = allExtractedText.join("\n\n---\n\n");
+
+    if (options.textToRemoveValues && options.textToRemoveValues.length > 0) {
+      options.textToRemoveValues.forEach(pattern => {
+        if (pattern) {
+          try {
+            // Escape special regex characters to treat the pattern as literal text
+            const safePattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            extractedText = extractedText.replace(new RegExp(safePattern, 'g'), '');
+          } catch (e) {
+            // Fallback to simple string replacement if regex fails
+            extractedText = extractedText.split(pattern).join('');
+          }
+        }
+      });
+    }
+
+    // Split the extracted text into an array of strings
+    const mcqTextArray = [];
+    if (extractedText) {
+      // Split by the section separator
+      const sections = extractedText.split('\n\n---\n\n');
+      for (const section of sections) {
+        if (section.trim()) {
+          mcqTextArray.push(section.trim());
+        }
+      }
+    }
+
+    // If no mcqText was found, add a placeholder
+    if (mcqTextArray.length === 0) {
+      mcqTextArray.push("No content found with the provided selectors.");
+    }
+
+    // Create a JSON response with the new required format
+    const responseObject = {
+      prompt: options.prompt || "",
+      topicId: options.topic ? parseInt(options.topic, 10) || 0 : 0,
+      mcqTextList: mcqTextArray,
+      unwantedTexts: options.textToRemoveValues || [],
+      tagList: [123, 456],  // Hardcoded as specified
+      userId: 2,            // Hardcoded as specified
+      isPublic: true,       // Hardcoded as specified
+      difficultyLevel: "EASY" // Hardcoded as specified
+    };
+
+    return JSON.stringify(responseObject, null, 2);
   } catch (error) {
     console.error("Error extracting text:", error);
     throw error;

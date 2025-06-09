@@ -20,14 +20,18 @@
         padding: 10px;
       }
       .input-group {
-        margin-bottom: 10px;
+        margin-bottom: 15px;
         position: relative;
+        display: flex;
+        flex-direction: column;
       }
       input {
-        width: calc(100% - 65px);
-        padding: 5px;
+        width: 100%;
+        padding: 8px;
         box-sizing: border-box;
         margin-bottom: 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
       }
       .button-group {
         display: flex;
@@ -70,7 +74,8 @@
         margin-left: 5px;
         cursor: pointer;
       }
-      .remove-selector {
+      .remove-selector,
+      .remove-text-to-remove {
         background: #f44336;
         color: white;
         border: none;
@@ -131,6 +136,14 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .section-header {
+        margin: 15px 0 5px 0;
+      }
+      .section-header h3 {
+        margin: 0 0 5px 0;
+        font-size: 14px;
+        color: #333;
+      }
       .saved-selector-actions button {
         margin-left: 5px;
         background: none;
@@ -153,23 +166,76 @@
     </style>
   </head>
   <body>
-    <div id="selectors-container">
-      <div class="input-group selector-group">
-        <label>CSS Selector:</label>
+    <div class="input-group">
+      <label>Topic ID:</label>
+      <div class="input-container">
+        <input
+          type="number"
+          id="topic-input"
+          placeholder="Enter topic ID"
+        />
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label>Prompt:</label>
+      <div class="input-container">
         <input
           type="text"
-          class="selector-input"
-          placeholder=".card-body.question-body"
-          value=".card-body.question-body"
+          id="prompt-input"
+          placeholder="Enter optional prompt text"
         />
-        <div class="selector-actions">
-          <button class="save-selector" title="Save this selector">💾</button>
-          <button class="remove-selector" title="Remove this selector"
-            >×</button
-          >
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h3>Text To Remove</h3>
+      <p class="helper-text">Specify text patterns that should be removed from the extracted content.</p>
+    </div>
+
+    <div id="text-to-remove-container">
+      <div class="input-group text-to-remove-group">
+        <label>Text-To-Remove:</label>
+        <div class="text-to-remove-input-container">
+          <input
+            type="text"
+            class="text-to-remove-input"
+            placeholder="Enter text to remove"
+          />
+          <div class="text-remove-actions">
+            <button class="remove-text-to-remove" title="Remove this text">×</button>
+          </div>
         </div>
       </div>
     </div>
+
+    <div class="selector-controls">
+      <button id="add-text-to-remove-btn">+ Add Another Text To Remove</button>
+    </div>
+
+    <div class="section-header">
+      <h3>CSS Selectors</h3>
+      <p class="helper-text">Specify CSS selectors to target the content you want to extract.</p>
+    </div>
+
+    <div id="selectors-container">
+      <div class="input-group selector-group">
+        <label>CSS Selector:</label>
+        <div class="selector-input-container">
+          <input
+            type="text"
+            class="selector-input"
+            placeholder=".card-body.question-body"
+            value=".card-body.question-body"
+          />
+          <div class="selector-actions">
+            <button class="save-selector" title="Save this selector">💾</button>
+            <button class="remove-selector" title="Remove this selector">×</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="selector-controls">
       <button id="add-selector-btn">+ Add Another Selector</button>
       <button id="manage-saved-btn">Manage Saved Selectors</button>
@@ -182,6 +248,12 @@
       <button id="extract-btn">Extract Text</button>
       <button id="copy-btn">Copy Text</button>
     </div>
+
+    <div class="section-header">
+      <h3>CSS Selectors</h3>
+      <p class="helper-text">Specify CSS selectors to target the content you want to extract.</p>
+    </div>
+
     <div class="options-group">
       <label>
         <input type="checkbox" id="handle-reveal-buttons" checked />
