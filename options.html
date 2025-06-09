@@ -1,0 +1,18 @@
+      <section>
+        <h2>Other Settings</h2>
+        <div class="option-group">
+          <label for="default-prompt">Default Prompt:</label>
+          <input type="text" id="default-prompt" placeholder="Enter default prompt text" />
+        </div>
+        <div class="option-group">
+          <label for="api-url">API URL:</label>
+          <input type="text" id="api-url" placeholder="http://localhost:8888/api/v1/manage/mcq/save/text" />
+          <p class="helper-text">URL where extracted data will be sent when using the Send to API button</p>
+        </div>
+        <div class="option-group">
+          <button id="save-btn" class="primary-button">Save Settings</button>
+          <div id="status" class="status-message"></div>
+        </div>
+      </section>
+
+      <script src="options.js"></script>

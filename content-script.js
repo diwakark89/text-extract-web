@@ -147,7 +147,6 @@ async function extractTextFromSelectors(
             // Escape special regex characters to treat the content as literal text
             const safePattern = content.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             extractedText = extractedText.replace(new RegExp(safePattern, 'g'), '');
-            console.log(`Removed content matching: ${content.substring(0, 30)}...`);
           } catch (e) {
             console.error('Error removing content:', e);
             // Fallback to simple string replacement if regex fails

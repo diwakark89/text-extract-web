@@ -95,7 +95,7 @@
         display: none;
       }
 
-      #copy-btn {
+      #copy-btn, #send-to-api-btn {
         display: none;
         margin-left: 10px;
         background: #5c6bc0;
@@ -109,10 +109,18 @@
         transition: all 0.2s ease;
       }
 
-      #copy-btn:hover {
+      #copy-btn:hover, #send-to-api-btn:hover {
         background: #4a5bae;
         transform: translateY(-1px);
         box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+      }
+
+      #send-to-api-btn {
+        background: #26a69a;
+      }
+
+      #send-to-api-btn:hover {
+        background: #00897b;
       }
 
       #extract-btn {
@@ -337,6 +345,42 @@
         width: 16px;
         height: 16px;
       }
+
+      .api-response-container {
+        margin: 10px 0;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+      }
+
+      .api-response-label {
+        font-weight: 500;
+        color: #555;
+        margin-bottom: 5px;
+      }
+
+      .api-response-status {
+        padding: 8px;
+        background-color: #fff;
+        border-radius: 4px;
+        border-left: 4px solid #ccc;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        word-break: break-word;
+      }
+
+      .api-response-status.success {
+        border-left-color: #4caf50;
+      }
+
+      .api-response-status.error {
+        border-left-color: #f44336;
+      }
+
+      .api-response-status.pending {
+        border-left-color: #2196f3;
+      }
     </style>
   </head>
   <body>
@@ -380,6 +424,12 @@
   <div class="button-group">
     <button id="extract-btn"> Extract Text</button>
     <button id="copy-btn">Copy to Clipboard</button>
+    <button id="send-to-api-btn" class="hidden">🚀 Send to API</button>
+  </div>
+
+  <div id="api-response-container" class="api-response-container hidden">
+    <div class="api-response-label">API Response:</div>
+    <div id="api-response-status" class="api-response-status">No API request made yet</div>
   </div>
 
   <pre id="output">Click "Extract Text" to get content.</pre>
