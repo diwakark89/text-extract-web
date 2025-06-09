@@ -83,7 +83,8 @@
       .button-group {
         display: flex;
         justify-content: space-between;
-        margin: 16px 0;
+        margin: 22px 0;
+        gap: 12px;
       }
 
       .visible {
@@ -98,6 +99,20 @@
         display: none;
         margin-left: 10px;
         background: #5c6bc0;
+        color: white;
+        padding: 10px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        flex-grow: 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.2s ease;
+      }
+
+      #copy-btn:hover {
+        background: #4a5bae;
+        transform: translateY(-1px);
+        box-shadow: 0 3px 6px rgba(0,0,0,0.15);
       }
 
       #extract-btn {
@@ -108,6 +123,14 @@
         border-radius: 6px;
         font-size: 14px;
         flex-grow: 1;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.2s ease;
+      }
+
+      #extract-btn:hover {
+        background: #43a047;
+        transform: translateY(-1px);
+        box-shadow: 0 3px 6px rgba(0,0,0,0.15);
       }
 
       .selector-group,
@@ -145,16 +168,24 @@
         color: white;
         border: none;
         border-radius: 50%;
-        width: 24px;
-        height: 24px;
-        font-size: 12px;
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
         line-height: 1;
         padding: 0;
-        margin-left: 6px;
+        margin-left: 8px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.2s ease;
+      }
+
+      .save-selector:hover {
+        background: #1976d2;
+        transform: translateY(-1px);
+        box-shadow: 0 3px 6px rgba(0,0,0,0.15);
       }
 
       .remove-selector,
@@ -163,16 +194,25 @@
         color: white;
         border: none;
         border-radius: 50%;
-        width: 24px;
-        height: 24px;
-        font-size: 16px;
+        width: 28px;
+        height: 28px;
+        font-size: 18px;
         line-height: 1;
         padding: 0;
-        margin-left: 6px;
+        margin-left: 8px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.2s ease;
+      }
+
+      .remove-selector:hover,
+      .remove-selector-to-remove:hover {
+        background: #d32f2f;
+        transform: translateY(-1px);
+        box-shadow: 0 3px 6px rgba(0,0,0,0.15);
       }
 
       .selector-controls {
@@ -344,24 +384,16 @@
       <p class="helper-text">Content from these selectors will be removed from extracted text</p>
     </div>
 
-    <div id="selectors-to-remove-container">
-      <div class="selector-to-remove-group">
-        <label>Selector To Remove:</label>
-        <div class="selector-to-remove-input-container">
-          <input
-            type="text"
-            class="selector-to-remove-input"
-            placeholder="Enter CSS selector to remove its content"
-          />
-          <div class="selector-remove-actions">
-            <button class="remove-selector-to-remove" title="Remove this selector">×</button>
-          </div>
-        </div>
+    <div class="input-group">
+      <label>Selectors To Remove (comma-separated):</label>
+      <div class="input-container">
+        <input
+          type="text"
+          id="selectors-to-remove-input"
+          placeholder="Enter comma-separated CSS selectors to remove their content"
+        />
+        <p class="helper-text">Multiple selectors can be separated by commas</p>
       </div>
-    </div>
-
-    <div class="selector-controls">
-      <button id="add-selector-to-remove-btn">+ Add Another Selector To Remove</button>
     </div>
 
     <div class="section-header">
@@ -369,26 +401,21 @@
       <p class="helper-text">Specify CSS selectors to target the content you want to extract.</p>
     </div>
 
-    <div id="selectors-container">
-      <div class="selector-group">
-        <label>CSS Selector:</label>
-        <div class="selector-input-container">
-          <input
-            type="text"
-            class="selector-input"
-            placeholder=".card-body.question-body"
-            value=".card-body.question-body"
-          />
-          <div class="selector-actions">
-            <button class="save-selector" title="Save this selector">💾</button>
-            <button class="remove-selector" title="Remove this selector">×</button>
-          </div>
-        </div>
+    <div class="input-group">
+      <label>CSS Selectors (comma-separated):</label>
+      <div class="input-container">
+        <input
+          type="text"
+          id="css-selectors-input"
+          placeholder=".card-body.question-body"
+          value=".card-body.question-body"
+        />
+        <p class="helper-text">Multiple selectors can be separated by commas</p>
       </div>
     </div>
 
     <div class="selector-controls">
-      <button id="add-selector-btn">+ Add Another Selector</button>
+      <button id="save-selector-btn">Save Current Selectors</button>
       <button id="manage-saved-btn">Manage Saved Selectors</button>
     </div>
     <div id="saved-selectors-panel" class="hidden">
@@ -407,7 +434,7 @@
     </div>
 
     <div class="button-group">
-      <button id="extract-btn">Extract Text</button>
+      <button id="extract-btn"> Extract Text</button>
       <button id="copy-btn">Copy to Clipboard</button>
     </div>
 

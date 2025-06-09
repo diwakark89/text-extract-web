@@ -13,14 +13,33 @@ function handleStorageError(error) {
   console.error("Storage operation failed:", error);
 }
 
-// Add selector input field
-document.getElementById("add-selector-btn").addEventListener("click", () => {
-  addSelectorField();
-});
+// No longer needed - using a comma-separated input field now
 
-// Add selector-to-remove field
-document.getElementById("add-selector-to-remove-btn").addEventListener("click", () => {
-  addSelectorToRemoveField();
+// Add save selector button event listener
+document.getElementById("save-selector-btn").addEventListener("click", () => {
+  try {
+    const cssSelectorsInput = document.getElementById("css-selectors-input");
+    if (cssSelectorsInput) {
+      const selectorsValue = cssSelectorsInput.value.trim();
+      if (selectorsValue) {
+        // Split by comma and save each selector individually
+        const selectors = selectorsValue.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        selectors.forEach(selector => saveSelector(selector));
+
+      // Visual feedback
+      const saveBtn = document.getElementById("save-selector-btn");
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = "✅ Saved!";
+      saveBtn.style.background = "#4caf50";
+      setTimeout(() => {
+        saveBtn.textContent = "📥 Save Current Selectors";
+        saveBtn.style.background = "";
+      }, 1500);
+    }
+  }
+  } catch (error) {
+    console.error("Error saving selectors:", error);
+  }
 });
 
 // Toggle saved selectors panel
@@ -38,49 +57,31 @@ document.getElementById("manage-saved-btn").addEventListener("click", () => {
 
 // Event delegation for selector and text-to-remove actions
 document.addEventListener("click", (event) => {
-  // Remove selector input field
-  if (event.target.classList.contains("remove-selector")) {
-    const selectorGroup = event.target.closest(".selector-group");
-    if (document.querySelectorAll(".selector-group").length > 1) {
-      selectorGroup.remove();
-    } else {
-      // Don't remove the last selector, just clear it
-      selectorGroup.querySelector(".selector-input").value = "";
-    }
-  }
+  // No longer needed - using a comma-separated input field now
 
-  // Remove selector-to-remove input field
-  if (event.target.classList.contains("remove-selector-to-remove")) {
-    const selectorToRemoveGroup = event.target.closest(".selector-to-remove-group");
-    if (document.querySelectorAll(".selector-to-remove-group").length > 1) {
-      selectorToRemoveGroup.remove();
-    } else {
-      // Don't remove the last selector-to-remove, just clear it
-      selectorToRemoveGroup.querySelector(".selector-to-remove-input").value = "";
-    }
-  }
+  // No longer needed - using a comma-separated input field now
 
-  // Save selector to storage
-  if (event.target.classList.contains("save-selector")) {
-    const selectorGroup = event.target.closest(".selector-group");
-    const selectorInput = selectorGroup.querySelector(".selector-input");
-    const selectorValue = selectorInput.value.trim();
-
-    if (selectorValue) {
-      saveSelector(selectorValue);
-      // Visual feedback
-      event.target.textContent = "✓";
-      setTimeout(() => {
-        event.target.textContent = "💾";
-      }, 1500);
-    }
-  }
+  // No longer needed - we now have a dedicated save button
 
   // Use saved selector
   if (event.target.classList.contains("use-selector")) {
     const selectorItem = event.target.closest(".saved-selector-item");
     const selectorValue = selectorItem.dataset.selector;
-    addSelectorField(selectorValue);
+
+    // Add to the comma-separated list
+    const cssSelectorsInput = document.getElementById("css-selectors-input");
+    if (cssSelectorsInput) {
+      const currentValue = cssSelectorsInput.value.trim();
+      if (currentValue) {
+        // Check if selector already exists in the list
+        const selectors = currentValue.split(',').map(s => s.trim());
+        if (!selectors.includes(selectorValue)) {
+          cssSelectorsInput.value = currentValue + ", " + selectorValue;
+        }
+      } else {
+        cssSelectorsInput.value = selectorValue;
+      }
+    }
   }
 
   // Delete saved selector
@@ -92,110 +93,9 @@ document.addEventListener("click", (event) => {
   }
 });
 
-/**
- * Adds a new selector-to-remove input field to the UI
- * @param {string} value - Initial value for the selector-to-remove field
- * @returns {HTMLElement|null} - The created selector-to-remove group element or null if creation failed
- */
-function addSelectorToRemoveField(value = "") {
-  try {
-    const container = document.getElementById("selectors-to-remove-container");
-    if (!container) {
-      throw new Error("Selectors-to-remove container not found");
-    }
+// No longer needed - using a comma-separated input field now
 
-    // Sanitize input value to prevent XSS
-    const sanitizedValue = value
-      ? value.replace(/[<>"'&]/g, (char) => {
-          switch (char) {
-            case "<":
-              return "&lt;";
-            case ">":
-              return "&gt;";
-            case '"':
-              return "&quot;";
-            case "'":
-              return "&#39;";
-            case "&":
-              return "&amp;";
-            default:
-              return char;
-          }
-        })
-      : "";
-
-    const newGroup = document.createElement("div");
-    newGroup.className = "selector-to-remove-group";
-    newGroup.innerHTML = `
-                <label>Selector To Remove:</label>
-                <div class="selector-to-remove-input-container">
-                  <input type="text" class="selector-to-remove-input" placeholder="Enter CSS selector to remove its content" value="${sanitizedValue}">
-                  <div class="selector-remove-actions">
-                      <button class="remove-selector-to-remove" title="Remove this selector">×</button>
-                  </div>
-                </div>
-            `;
-
-    container.appendChild(newGroup);
-    return newGroup;
-  } catch (error) {
-    console.error("Error adding selector-to-remove field:", error);
-    return null;
-  }
-}
-
-/**
- * Adds a new selector input field to the UI
- * @param {string} value - Initial value for the selector field
- * @returns {HTMLElement|null} - The created selector group element or null if creation failed
- */
-function addSelectorField(value = "") {
-  try {
-    const container = document.getElementById("selectors-container");
-    if (!container) {
-      throw new Error("Selectors container not found");
-    }
-
-    // Sanitize input value to prevent XSS
-    const sanitizedValue = value
-      ? value.replace(/[<>"'&]/g, (char) => {
-          switch (char) {
-            case "<":
-              return "&lt;";
-            case ">":
-              return "&gt;";
-            case '"':
-              return "&quot;";
-            case "'":
-              return "&#39;";
-            case "&":
-              return "&amp;";
-            default:
-              return char;
-          }
-        })
-      : "";
-
-    const newGroup = document.createElement("div");
-    newGroup.className = "selector-group";
-    newGroup.innerHTML = `
-                <label>CSS Selector:</label>
-                <div class="selector-input-container">
-                  <input type="text" class="selector-input" placeholder="Enter CSS selector" value="${sanitizedValue}">
-                  <div class="selector-actions">
-                      <button class="save-selector" title="Save this selector">💾</button>
-                      <button class="remove-selector" title="Remove this selector">×</button>
-                  </div>
-                </div>
-            `;
-
-    container.appendChild(newGroup);
-    return newGroup;
-  } catch (error) {
-    console.error("Error adding selector field:", error);
-    return null;
-  }
-}
+// No longer needed - using a comma-separated input field now
 
 /**
  * Saves a selector to storage
@@ -310,16 +210,17 @@ document.getElementById("extract-btn").addEventListener("click", () => {
       throw new Error("Output element not found");
     }
 
-    const selectorInputs = document.querySelectorAll(".selector-input");
-    if (!selectorInputs || selectorInputs.length === 0) {
+    const cssSelectorsInput = document.getElementById("css-selectors-input");
+    if (!cssSelectorsInput) {
       outputElem.innerText =
-        "No selector inputs found. Please reload the extension.";
+        "CSS selectors input not found. Please reload the extension.";
       return;
     }
 
-    const selectors = Array.from(selectorInputs)
-      .map((input) => input.value.trim())
-      .filter((selector) => selector.length > 0);
+    const cssSelectorsValue = cssSelectorsInput.value.trim();
+    const selectors = cssSelectorsValue
+      ? cssSelectorsValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
+      : [];
 
     if (selectors.length === 0) {
       outputElem.innerText = "Please enter at least one valid CSS selector.";
@@ -342,11 +243,12 @@ document.getElementById("extract-btn").addEventListener("click", () => {
       ? textToRemoveValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
       : [];
 
-    // Get all selectors-to-remove values
-    const selectorToRemoveInputs = document.querySelectorAll(".selector-to-remove-input");
-    const selectorsToRemove = Array.from(selectorToRemoveInputs)
-      .map(input => input.value.trim())
-      .filter(value => value.length > 0);
+    // Get comma-separated selectors-to-remove values
+    const selectorsToRemoveInput = document.getElementById("selectors-to-remove-input");
+    const selectorsToRemoveValue = selectorsToRemoveInput.value.trim();
+    const selectorsToRemove = selectorsToRemoveValue
+      ? selectorsToRemoveValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
+      : [];
 
     // Get user extraction options
     const handleRevealButtons = document.getElementById(
@@ -359,11 +261,11 @@ document.getElementById("extract-btn").addEventListener("click", () => {
     // Save the current selectors, topic, prompt, text-to-remove values, and selectors-to-remove as last used
     chrome.storage.sync.set(
       { 
-        [STORAGE_KEYS.LAST_USED_SELECTORS]: selectors,
+        [STORAGE_KEYS.LAST_USED_SELECTORS]: cssSelectorsValue,
         [STORAGE_KEYS.LAST_TOPIC]: topic,
         [STORAGE_KEYS.LAST_PROMPT]: prompt,
         [STORAGE_KEYS.LAST_TEXT_TO_REMOVE]: textToRemoveValue,
-        [STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]: selectorsToRemove
+        [STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]: selectorsToRemoveValue
       },
       () => {
         if (chrome.runtime.lastError) {
@@ -544,9 +446,13 @@ document.getElementById("copy-btn").addEventListener("click", () => {
       .then(() => {
         const copyBtn = document.getElementById("copy-btn");
         const originalText = copyBtn.innerText;
+        const originalBg = copyBtn.style.background;
         copyBtn.innerText = "Copied!";
+        copyBtn.style.background = "#4caf50";
+
         setTimeout(() => {
           copyBtn.innerText = originalText;
+          copyBtn.style.background = originalBg;
         }, 2000);
       })
       .catch((err) => {
@@ -599,12 +505,7 @@ chrome.runtime.lastError &&
  */
 document.addEventListener("DOMContentLoaded", () => {
   try {
-    // Initialize the selectors container
-    const container = document.getElementById("selectors-container");
-    if (!container) {
-      throw new Error("Selectors container not found");
-    }
-    container.innerHTML = "";
+    // No need to initialize selectors container anymore since we use a single input field
 
     // No need to initialize text-to-remove container anymore since we use a single input field
 
@@ -618,9 +519,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ], (result) => {
       if (chrome.runtime.lastError) {
         handleStorageError(chrome.runtime.lastError);
-        // Fall back to default selector
-        addSelectorField(".card-body.question-body");
-        addSelectorToRemoveField();
+        // Fall back to default selector value (now handled in HTML)
         return;
       }
 
@@ -642,34 +541,36 @@ document.addEventListener("DOMContentLoaded", () => {
         textToRemoveInput.value = result[STORAGE_KEYS.LAST_TEXT_TO_REMOVE];
       }
 
-      // Initialize selectors-to-remove container
-      const selectorsToRemoveContainer = document.getElementById("selectors-to-remove-container");
-      if (selectorsToRemoveContainer) {
-        selectorsToRemoveContainer.innerHTML = "";
+      // Set selectors-to-remove input value if available
+      const selectorsToRemoveInput = document.getElementById("selectors-to-remove-input");
+      if (selectorsToRemoveInput && result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]) {
+        // If it's an array (from previous version), join with commas
+        if (Array.isArray(result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE])) {
+          selectorsToRemoveInput.value = result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE].join(', ');
+        } else {
+          // Otherwise use the string directly
+          selectorsToRemoveInput.value = result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE];
+        }
       }
 
-      // Add saved selectors-to-remove values or a single empty field
-      const savedSelectorsToRemove = result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE] || [];
+      // Set CSS selectors input value if available
+      const cssSelectorsInput = document.getElementById("css-selectors-input");
+      if (cssSelectorsInput) {
+        const lastUsedSelectors = result[STORAGE_KEYS.LAST_USED_SELECTORS];
 
-      if (savedSelectorsToRemove.length > 0) {
-        // Add each saved selector-to-remove value
-        savedSelectorsToRemove.forEach(value => {
-          addSelectorToRemoveField(value);
-        });
-      } else {
-        // Add a single empty field if none saved
-        addSelectorToRemoveField();
+        if (lastUsedSelectors) {
+          // If it's an array (from previous version), join with commas
+          if (Array.isArray(lastUsedSelectors)) {
+            cssSelectorsInput.value = lastUsedSelectors.join(', ');
+          } else {
+            // Otherwise use the string directly
+            cssSelectorsInput.value = lastUsedSelectors;
+          }
+        } else {
+          // Default value
+          cssSelectorsInput.value = ".card-body.question-body";
+        }
       }
-
-      // Initialize CSS selectors for extraction
-      const lastUsedSelectors = result[STORAGE_KEYS.LAST_USED_SELECTORS] || [
-        ".card-body.question-body",
-      ];
-
-      // Add last used selectors or default
-      lastUsedSelectors.forEach((selector) => {
-        addSelectorField(selector);
-      });
     });
 
     // Initialize copy button with hidden class
