@@ -7,6 +7,7 @@
 
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // No longer handling 'simulateRevealInteractions' or 'clickRevealButtons' actions
   if (request.action === "extractText") {
     if (!request.selectors || !Array.isArray(request.selectors)) {
       sendResponse({
@@ -84,21 +85,29 @@ async function extractTextFromSelectors(
     // First, if selectors-to-remove are specified, get their content to exclude later
     let contentToRemove = [];
     if (options.selectorsToRemove && options.selectorsToRemove.length > 0) {
+      console.log('Processing selectors to remove:', options.selectorsToRemove);
       for (const selectorToRemove of options.selectorsToRemove) {
         if (!selectorToRemove) continue;
+        console.log(`Processing selector to remove: ${selectorToRemove}`);
 
         try {
           const elementsToRemove = document.querySelectorAll(selectorToRemove);
+          console.log(`Found ${elementsToRemove.length} elements matching selector: ${selectorToRemove}`);
           if (elementsToRemove && elementsToRemove.length > 0) {
             // Extract text from each element that should be removed
             const textsFromSelector = Array.from(elementsToRemove)
               .map(el => {
                 const visibleText = el.innerText.trim();
                 const hiddenText = extractHiddenText(el);
-                return visibleText || hiddenText || "";
+                const resultText = visibleText || hiddenText || "";
+                if (resultText) {
+                  console.log(`Found text to remove (${resultText.length} chars): ${resultText.substring(0, 50)}${resultText.length > 50 ? '...' : ''}`);
+                }
+                return resultText;
               })
               .filter(text => text.length > 0);
 
+            console.log(`Extracted ${textsFromSelector.length} text items to remove from selector ${selectorToRemove}`);
             // Add all texts from this selector to the master list
             contentToRemove = [...contentToRemove, ...textsFromSelector];
           }
@@ -113,9 +122,6 @@ async function extractTextFromSelectors(
       try {
         // Find all elements matching the selector
         const elements = document.querySelectorAll(selector);
-
-        // Step 1: Try to reveal hidden content first
-        await attemptToRevealHiddenContent(elements);
 
         // Step 2: Extract text from each element, including hidden ones
         const extractedText = Array.from(elements)
@@ -152,19 +158,56 @@ async function extractTextFromSelectors(
 
     // First remove content from selector-to-remove if specified
     if (contentToRemove && contentToRemove.length > 0) {
-      contentToRemove.forEach(content => {
-        if (content) {
-          try {
-            // Escape special regex characters to treat the content as literal text
-            const safePattern = content.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            extractedText = extractedText.replace(new RegExp(safePattern, 'g'), '');
-          } catch (e) {
-            console.error('Error removing content:', e);
-            // Fallback to simple string replacement if regex fails
-            extractedText = extractedText.split(content).join('');
+      console.log('Content to remove:', contentToRemove);
+      // First create a combined regex with all patterns to remove at once (more efficient)
+      try {
+        if (contentToRemove.length > 0) {
+          // Filter out empty items and create escaped patterns
+          const patterns = contentToRemove
+            .filter(content => content && content.trim().length > 0)
+            .map(content => content.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+          if (patterns.length > 0) {
+            // Create a single regex with all patterns as alternatives
+            const combinedPattern = patterns.join('|');
+            const regex = new RegExp(combinedPattern, 'gi');
+
+            // Apply the combined regex
+            const originalLength = extractedText.length;
+            extractedText = extractedText.replace(regex, '');
+            console.log(`Combined regex removal: ${originalLength - extractedText.length} characters removed`);
           }
         }
-      });
+      } catch (err) {
+        console.error('Error with combined regex approach:', err);
+        // Fall back to individual replacements if the combined approach fails
+        contentToRemove.forEach(content => {
+          if (content) {
+            try {
+              // Escape special regex characters to treat the content as literal text
+              const safePattern = content.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              // Use a global case-insensitive regex for better matching
+              const regex = new RegExp(safePattern, 'gi');
+              const originalLength = extractedText.length;
+              extractedText = extractedText.replace(regex, '');
+              console.log(`Individual regex removal: ${originalLength - extractedText.length} characters removed`);
+
+              // If regex didn't work (no change in length), try string replacement
+              if (originalLength === extractedText.length && content.length > 0) {
+                const beforeLength = extractedText.length;
+                extractedText = extractedText.split(content).join('');
+                console.log(`String split removal: ${beforeLength - extractedText.length} characters removed`);
+              }
+            } catch (e) {
+              console.error('Error removing content:', e);
+              // Fallback to simple string replacement if regex fails
+              const beforeLength = extractedText.length;
+              extractedText = extractedText.split(content).join('');
+              console.log(`Fallback removal: ${beforeLength - extractedText.length} characters removed`);
+            }
+          }
+        });
+      }
     }
 
     // Then process text-to-remove patterns
@@ -183,14 +226,23 @@ async function extractTextFromSelectors(
       });
     }
 
+    // Clean up the extracted text by removing empty lines and excess whitespace
+    extractedText = extractedText.replace(/\n{3,}/g, '\n\n'); // Replace 3+ newlines with just 2
+
     // Split the extracted text into an array of strings
     const mcqTextArray = [];
     if (extractedText) {
+      // Log the final extracted text before splitting
+      console.log('Final extracted text length before splitting:', extractedText.length);
+
       // Split by the section separator
       const sections = extractedText.split('\n\n---\n\n');
+      console.log('Split into', sections.length, 'sections');
+
       for (const section of sections) {
-        if (section.trim()) {
-          mcqTextArray.push(section.trim());
+        const trimmedSection = section.trim();
+        if (trimmedSection) {
+          mcqTextArray.push(trimmedSection);
         }
       }
     }

@@ -41,11 +41,7 @@ Test with accordion UI patterns that hide/show content.
 
 When testing with "Include hidden text" option checked:
 - All text content should be extracted, including hidden elements
-- Content behind reveal buttons should be attempted to be extracted
-
-When "Try to reveal hidden content" is checked:
-- The extension should simulate clicks on buttons that might reveal content
-- Additional content should be visible in the extraction results
+- Content may include text from hidden elements based on CSS properties
 
 ## Troubleshooting
 

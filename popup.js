@@ -42,6 +42,42 @@ document.getElementById("css-selectors-input").addEventListener("change", (event
   }
 });
 
+// Automatically save selectors-to-remove values when they change
+document.getElementById("selectors-to-remove-input").addEventListener("change", (event) => {
+  try {
+    const selectorsToRemoveValue = event.target.value.trim();
+    // Save current value to storage
+    chrome.storage.sync.set(
+      { [STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]: selectorsToRemoveValue },
+      () => {
+        if (chrome.runtime.lastError) {
+          handleStorageError(chrome.runtime.lastError);
+        }
+      }
+    );
+  } catch (error) {
+    console.error("Error auto-saving selectors-to-remove:", error);
+  }
+});
+
+// Automatically save text-to-remove values when they change
+document.getElementById("text-to-remove-input").addEventListener("change", (event) => {
+  try {
+    const textToRemoveValue = event.target.value.trim();
+    // Save current value to storage
+    chrome.storage.sync.set(
+      { [STORAGE_KEYS.LAST_TEXT_TO_REMOVE]: textToRemoveValue },
+      () => {
+        if (chrome.runtime.lastError) {
+          handleStorageError(chrome.runtime.lastError);
+        }
+      }
+    );
+  } catch (error) {
+    console.error("Error auto-saving text-to-remove:", error);
+  }
+});
+
 // Event delegation for selector actions is no longer needed
 // as we're automatically saving the current value
 
@@ -116,9 +152,6 @@ document.getElementById("extract-btn").addEventListener("click", () => {
       : [];
 
     // Get user extraction options
-    const handleRevealButtons = document.getElementById(
-      "handle-reveal-buttons"
-    ).checked;
     const includeHiddenText = document.getElementById(
       "include-hidden-text"
     ).checked;
@@ -160,48 +193,8 @@ document.getElementById("extract-btn").addEventListener("click", () => {
             files: ["content-script.js"],
           })
           .then(() => {
-            // First try to reveal hidden content if option is checked
-            if (handleRevealButtons) {
-              // Step 1: First try general simulations of reveal interactions
-              chrome.tabs.sendMessage(
-                tab.id,
-                {
-                  action: "simulateRevealInteractions",
-                },
-                (simulateResponse) => {
-                  // Step 2: Try targeted reveal button clicks for each selector
-                  const clickPromises = selectors.map((selector) => {
-                    return new Promise((resolve) => {
-                      chrome.tabs.sendMessage(
-                        tab.id,
-                        {
-                          action: "clickRevealButtons",
-                          nearSelector: selector,
-                        },
-                        (response) => {
-                          if (chrome.runtime.lastError || !response) {
-                            resolve();
-                          } else {
-                            resolve();
-                          }
-                        }
-                      );
-                    });
-                  });
-
-                  // Wait for all button operations to complete
-                  Promise.all(clickPromises).then(() => {
-                    // Wait for any animations or changes to complete
-                    setTimeout(() => {
-                      extractText();
-                    }, 750); // Increased wait time for better chance of seeing changes
-                  });
-                }
-              );
-            } else {
-              // Skip reveal button handling
-              extractText();
-            }
+            // No longer using reveal button functionality
+            extractText();
 
             // Function to extract text from the page
             function extractText() {
