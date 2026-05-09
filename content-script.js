@@ -7,12 +7,11 @@
 
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // No longer handling 'simulateRevealInteractions' or 'clickRevealButtons' actions
   if (request.action === "extractText") {
-    if (!request.selectors || !Array.isArray(request.selectors)) {
+    if (!request.questionSelector || !request.optionsSelector || !request.answerSelector) {
       sendResponse({
         success: false,
-        error: "Invalid selectors provided",
+        error: "All three selectors (question, options, answer) are required",
       });
       return true;
     }
@@ -38,7 +37,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
 
     // Extract text based on provided selectors and options
-    extractTextFromSelectors(request.selectors, { includeHiddenText, examName, tagList, prompt, textToRemoveValues, selectorsToRemove })
+    extractTextFromSelectors(
+      request.questionSelector,
+      request.optionsSelector,
+      request.answerSelector,
+      { includeHiddenText, examName, tagList, prompt, textToRemoveValues, selectorsToRemove }
+    )
       .then((result) => {
         sendResponse({
           success: true,
@@ -66,7 +70,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 /**
  * Extracts text from DOM elements matching the provided CSS selectors
- * @param {string[]} selectors - Array of CSS selectors to target
+ * @param {string} questionSelector - CSS selector for questions
+ * @param {string} optionsSelector - CSS selector for options
+ * @param {string} answerSelector - CSS selector for answers
  * @param {Object} options - Extraction options
  * @param {boolean} options.includeHiddenText - Whether to include text from hidden elements
  * @param {string} options.examName - Exam name to include with the extracted text
@@ -76,12 +82,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * @returns {Promise<string>} - Promise resolving to formatted extracted text
  */
 async function extractTextFromSelectors(
-  selectors,
-    options = { includeHiddenText: true, examName: "", tagList: [], prompt: "", textToRemoveValues: [], selectorsToRemove: [] }
+  questionSelector,
+  optionsSelector,
+  answerSelector,
+  options = { includeHiddenText: true, examName: "", tagList: [], prompt: "", textToRemoveValues: [], selectorsToRemove: [] }
 ) {
   try {
-    let allExtractedText = [];
-
     // First, if selectors-to-remove are specified, get their content to exclude later
     let contentToRemove = [];
     if (options.selectorsToRemove && options.selectorsToRemove.length > 0) {
@@ -117,157 +123,200 @@ async function extractTextFromSelectors(
       }
     }
 
-    // Process each selector
-    for (const selector of selectors) {
-      try {
-        // Find all elements matching the selector
-        const elements = document.querySelectorAll(selector);
+    // Get all elements that match any of the three selectors
+    const allElements = document.querySelectorAll(`${questionSelector}, ${optionsSelector}, ${answerSelector}`);
+    console.log(`Found ${allElements.length} total elements to process`);
 
-        // Step 2: Extract text from each element, including hidden ones
-        const extractedText = Array.from(elements)
-          .map((el) => {
-            // Always try to get both hidden and visible content
-            const visibleText = el.innerText.trim();
-            const hiddenText = extractHiddenText(el);
+    // Create a sequential scan through the page
+    const mcqItems = [];
+    let currentItem = null;
 
-            // Combine all text, using visible text if available
-            return visibleText || hiddenText || "";
-          })
-          .filter((text) => text.length > 0);
+    for (let i = 0; i < allElements.length; i++) {
+      const element = allElements[i];
 
-        // Step 3: Look for additional hidden elements within parent containers
-        const parentElements = new Set();
-        elements.forEach((el) => {
-          if (el.parentElement) parentElements.add(el.parentElement);
-        });
+      // Check which type of element this is
+      const isQuestion = element.matches(questionSelector);
+      const isOption = element.matches(optionsSelector);
+      const isAnswer = element.matches(answerSelector);
 
-        // Format and add each extracted text item individually to the array
-        // This way each extracted element becomes its own item in mcqTextList
-        if (extractedText.length > 0) {
-          extractedText.forEach(text => {
-            allExtractedText.push(text);
-          });
+      if (isQuestion) {
+        // Save the previous item if it exists
+        if (currentItem && (currentItem.question || currentItem.options.length > 0)) {
+          mcqItems.push(currentItem);
         }
-      } catch (error) {
-        console.error(`Error with selector ${selector}:`, error);
+
+        // Start a new item
+        const visibleText = element.innerText.trim();
+        const hiddenText = extractHiddenText(element);
+        currentItem = {
+          question: visibleText || hiddenText || "",
+          options: [],
+          answers: []
+        };
+        console.log(`Found question ${mcqItems.length + 1}: ${currentItem.question.substring(0, 50)}...`);
+      } else if (isOption && currentItem) {
+        // Add option to current item
+        const optionText = element.innerText.trim() || extractHiddenText(element) || "";
+
+        // Try to split options by common delimiters if it contains multiple options
+        const optionLines = optionText.split(/\n/).filter(line => line.trim().length > 0);
+
+        // If we have multiple lines that look like options (e.g., start with A., B., etc.), use them
+        if (optionLines.length > 1 && optionLines.some(line => /^[A-Za-z][\.):\.]/.test(line.trim()))) {
+          optionLines.forEach(line => currentItem.options.push(line.trim()));
+          console.log(`  Added ${optionLines.length} options to current question`);
+        } else if (optionText) {
+          // Otherwise, treat the whole text as a single option
+          currentItem.options.push(optionText);
+          console.log(`  Added option to current question: ${optionText.substring(0, 30)}...`);
+        }
+      } else if (isAnswer && currentItem) {
+        // Add answer to current item
+        const answerText = element.innerText.trim() || extractHiddenText(element) || "";
+
+        if (answerText) {
+          // Store the raw answer text - parsing will happen later
+          currentItem.answers.push(answerText);
+          console.log(`  Added answer to current question: ${answerText}`);
+        }
       }
     }
 
-    // Process text-to-remove patterns
-    let extractedText = allExtractedText.join("\n\n---\n\n");
+    // Don't forget to add the last item
+    if (currentItem && (currentItem.question || currentItem.options.length > 0)) {
+      mcqItems.push(currentItem);
+    }
 
-    // First remove content from selector-to-remove if specified
-    if (contentToRemove && contentToRemove.length > 0) {
-      console.log('Content to remove:', contentToRemove);
-      // First create a combined regex with all patterns to remove at once (more efficient)
-      try {
-        if (contentToRemove.length > 0) {
-          // Filter out empty items and create escaped patterns
-          const patterns = contentToRemove
-            .filter(content => content && content.trim().length > 0)
-            .map(content => content.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    console.log(`Total items created: ${mcqItems.length}`);
 
-          if (patterns.length > 0) {
-            // Create a single regex with all patterns as alternatives
-            const combinedPattern = patterns.join('|');
-            const regex = new RegExp(combinedPattern, 'gi');
+    // Process text-to-remove patterns and selectors-to-remove on each item
 
-            // Apply the combined regex
-            const originalLength = extractedText.length;
-            extractedText = extractedText.replace(regex, '');
-            console.log(`Combined regex removal: ${originalLength - extractedText.length} characters removed`);
-          }
-        }
-      } catch (err) {
-        console.error('Error with combined regex approach:', err);
-        // Fall back to individual replacements if the combined approach fails
+    // Helper function to clean text
+    function cleanText(text, contentToRemove, textToRemoveValues) {
+      let cleanedText = text;
+
+      // Remove content from selectors-to-remove
+      if (contentToRemove && contentToRemove.length > 0) {
         contentToRemove.forEach(content => {
           if (content) {
             try {
-              // Escape special regex characters to treat the content as literal text
               const safePattern = content.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              // Use a global case-insensitive regex for better matching
               const regex = new RegExp(safePattern, 'gi');
-              const originalLength = extractedText.length;
-              extractedText = extractedText.replace(regex, '');
-              console.log(`Individual regex removal: ${originalLength - extractedText.length} characters removed`);
-
-              // If regex didn't work (no change in length), try string replacement
-              if (originalLength === extractedText.length && content.length > 0) {
-                const beforeLength = extractedText.length;
-                extractedText = extractedText.split(content).join('');
-                console.log(`String split removal: ${beforeLength - extractedText.length} characters removed`);
-              }
+              cleanedText = cleanedText.replace(regex, '');
             } catch (e) {
-              console.error('Error removing content:', e);
-              // Fallback to simple string replacement if regex fails
-              const beforeLength = extractedText.length;
-              extractedText = extractedText.split(content).join('');
-              console.log(`Fallback removal: ${beforeLength - extractedText.length} characters removed`);
+              cleanedText = cleanedText.split(content).join('');
             }
           }
         });
       }
+
+      // Remove text-to-remove patterns
+      if (textToRemoveValues && textToRemoveValues.length > 0) {
+        textToRemoveValues.forEach(pattern => {
+          if (pattern) {
+            try {
+              const safePattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              cleanedText = cleanedText.replace(new RegExp(safePattern, 'g'), '');
+            } catch (e) {
+              cleanedText = cleanedText.split(pattern).join('');
+            }
+          }
+        });
+      }
+
+      return cleanedText.trim();
     }
 
-    // Then process text-to-remove patterns
-    if (options.textToRemoveValues && options.textToRemoveValues.length > 0) {
-      options.textToRemoveValues.forEach(pattern => {
-        if (pattern) {
-          try {
-            // Escape special regex characters to treat the pattern as literal text
-            const safePattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            extractedText = extractedText.replace(new RegExp(safePattern, 'g'), '');
-          } catch (e) {
-            // Fallback to simple string replacement if regex fails
-            extractedText = extractedText.split(pattern).join('');
+    // Clean each item's text
+    mcqItems.forEach(item => {
+      item.question = cleanText(item.question, contentToRemove, options.textToRemoveValues);
+      item.options = item.options.map(opt => cleanText(opt, contentToRemove, options.textToRemoveValues)).filter(opt => opt.length > 0);
+      item.answers = item.answers.map(ans => cleanText(ans, contentToRemove, options.textToRemoveValues)).filter(ans => ans.length > 0);
+    });
+
+    // Helper function to parse options into A, B, C, D format
+    function parseOptionsToObject(optionsArray) {
+      const optionsObject = {};
+      const labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
+      optionsArray.forEach((option, index) => {
+        if (index < labels.length) {
+          // Remove leading letters/numbers if they exist (e.g., "A. text" -> "text")
+          let cleanOption = option.replace(/^[A-Za-z0-9][\.):\.\s]+/, '').trim();
+          optionsObject[labels[index]] = cleanOption || option;
+        }
+      });
+
+      return optionsObject;
+    }
+
+    // Helper function to parse answers to array format
+    function parseAnswersToArray(answersArray) {
+      const answerLetters = [];
+
+      answersArray.forEach(answer => {
+        // Remove extra whitespace
+        const cleanAnswer = answer.trim();
+
+        if (!cleanAnswer) return;
+
+        // First check if it's ONLY a single letter (A, B, C, etc.) or letter with punctuation
+        const singleLetterMatch = cleanAnswer.match(/^([A-J])[\.\):\s]*$/i);
+        if (singleLetterMatch) {
+          answerLetters.push(singleLetterMatch[1].toUpperCase());
+          return;
+        }
+
+        // Check if answer contains comma-separated values (e.g., "A,C" or "A, C")
+        if (cleanAnswer.includes(',')) {
+          const parts = cleanAnswer.split(',').map(p => p.trim());
+          parts.forEach(part => {
+            // Match only single letters (A-J) followed by optional punctuation/space
+            const match = part.match(/^([A-J])[\.\):\s]*$/i);
+            if (match) {
+              answerLetters.push(match[1].toUpperCase());
+            }
+          });
+        } else {
+          // Try to match patterns like "A)", "A.", "A:", or just "A" at the start
+          const match = cleanAnswer.match(/^([A-J])[\.\):\s]/i);
+          if (match) {
+            answerLetters.push(match[1].toUpperCase());
+          } else {
+            // Last resort: check if the entire string is just a single letter A-J
+            const lastMatch = cleanAnswer.match(/^([A-J])$/i);
+            if (lastMatch) {
+              answerLetters.push(lastMatch[1].toUpperCase());
+            }
           }
         }
       });
+
+      return answerLetters.length > 0 ? answerLetters : []; // Return empty array if no answer found
     }
 
-    // Clean up the extracted text by removing empty lines and excess whitespace
-    extractedText = extractedText.replace(/\n{3,}/g, '\n\n'); // Replace 3+ newlines with just 2
+    // Convert items to the new format
+    const formattedItems = mcqItems.map((item, index) => {
+      return {
+        index: index + 1,
+        question: item.question || "",
+        options: parseOptionsToObject(item.options),
+        correct_answers: parseAnswersToArray(item.answers)
+      };
+    }).filter(item => item.question.length > 0 || Object.keys(item.options).length > 0);
 
-    // Split the extracted text into an array of strings
-    const mcqTextArray = [];
-    if (extractedText) {
-      // Log the final extracted text before splitting
-      console.log('Final extracted text length before splitting:', extractedText.length);
-
-      // Split by the section separator
-      const sections = extractedText.split('\n\n---\n\n');
-      console.log('Split into', sections.length, 'sections');
-
-      for (const section of sections) {
-        const trimmedSection = section.trim();
-        if (trimmedSection) {
-          mcqTextArray.push(trimmedSection);
-        }
-      }
+    // If no items were found, return empty array with message
+    if (formattedItems.length === 0) {
+      return JSON.stringify([{
+        index: 1,
+        question: "No content found with the provided selectors.",
+        options: {},
+        correct_answers: []
+      }], null, 2);
     }
-
-    // If no mcqText was found, add a placeholder
-    if (mcqTextArray.length === 0) {
-      mcqTextArray.push("No content found with the provided selectors.");
-    }
-
-    // Create a JSON response with the new required format
-
-    // Create response object with the new structure
-    const responseObject = {
-      prompt: options.prompt || "",
-      examName: options.examName || "",
-      mcqTextList: mcqTextArray,
-      unwantedTexts: options.textToRemoveValues || [],
-      tagList: options.tagList || [],
-      userId: 2,            // Hardcoded as specified
-      isPublic: true,       // Hardcoded as specified
-      difficultyLevel: "EASY" // Hardcoded as specified
-    };
 
     // Convert to JSON string with formatting
-    const jsonString = JSON.stringify(responseObject, null, 2);
+    const jsonString = JSON.stringify(formattedItems, null, 2);
     return jsonString;
   } catch (error) {
     console.error("Error extracting text:", error);

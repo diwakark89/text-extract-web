@@ -390,15 +390,38 @@
   </div>
 
   <div class="input-group">
-    <label>CSS Selectors (comma-separated):</label>
+    <label>Question CSS Selector:</label>
     <div class="input-container">
       <input
               type="text"
-              id="css-selectors-input"
-              placeholder=".card-body.question-body"
-              value=".card-body.question-body"
+              id="question-selector-input"
+              placeholder=".question"
       />
-      <p class="helper-text">Multiple selectors can be separated by commas</p>
+      <p class="helper-text">CSS selector for question elements</p>
+    </div>
+  </div>
+
+  <div class="input-group">
+    <label>Options CSS Selector:</label>
+    <div class="input-container">
+      <input
+              type="text"
+              id="options-selector-input"
+              placeholder=".options"
+      />
+      <p class="helper-text">CSS selector for option elements</p>
+    </div>
+  </div>
+
+  <div class="input-group">
+    <label>Answer CSS Selector:</label>
+    <div class="input-container">
+      <input
+              type="text"
+              id="answer-selector-input"
+              placeholder=".answer"
+      />
+      <p class="helper-text">CSS selector for answer elements</p>
     </div>
   </div>
 

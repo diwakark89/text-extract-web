@@ -1,6 +1,8 @@
 // Storage keys constants
 const STORAGE_KEYS = {
-  LAST_USED_SELECTORS: "last_used_selectors",
+  LAST_QUESTION_SELECTOR: "last_question_selector",
+  LAST_OPTIONS_SELECTOR: "last_options_selector",
+  LAST_ANSWER_SELECTOR: "last_answer_selector",
   LAST_EXAM_NAME: "last_exam_name",
   LAST_PROMPT: "last_prompt",
   LAST_TEXT_TO_REMOVE: "last_text_to_remove",
@@ -22,23 +24,54 @@ function handleStorageError(error) {
 // Save selector functionality is now automatic through the extract button
 // and when the popup is closed. No manual save needed.
 
-// Automatically save CSS selector values when they change
-document.getElementById("css-selectors-input").addEventListener("change", (event) => {
+// Automatically save question selector when it changes
+document.getElementById("question-selector-input").addEventListener("change", (event) => {
   try {
-    const selectorsValue = event.target.value.trim();
-    if (selectorsValue) {
-      // Save current value to storage
-      chrome.storage.sync.set(
-        { [STORAGE_KEYS.LAST_USED_SELECTORS]: selectorsValue },
-        () => {
-          if (chrome.runtime.lastError) {
-            handleStorageError(chrome.runtime.lastError);
-          }
+    const selectorValue = event.target.value.trim();
+    chrome.storage.sync.set(
+      { [STORAGE_KEYS.LAST_QUESTION_SELECTOR]: selectorValue },
+      () => {
+        if (chrome.runtime.lastError) {
+          handleStorageError(chrome.runtime.lastError);
         }
-      );
-    }
+      }
+    );
   } catch (error) {
-    console.error("Error auto-saving selectors:", error);
+    console.error("Error auto-saving question selector:", error);
+  }
+});
+
+// Automatically save options selector when it changes
+document.getElementById("options-selector-input").addEventListener("change", (event) => {
+  try {
+    const selectorValue = event.target.value.trim();
+    chrome.storage.sync.set(
+      { [STORAGE_KEYS.LAST_OPTIONS_SELECTOR]: selectorValue },
+      () => {
+        if (chrome.runtime.lastError) {
+          handleStorageError(chrome.runtime.lastError);
+        }
+      }
+    );
+  } catch (error) {
+    console.error("Error auto-saving options selector:", error);
+  }
+});
+
+// Automatically save answer selector when it changes
+document.getElementById("answer-selector-input").addEventListener("change", (event) => {
+  try {
+    const selectorValue = event.target.value.trim();
+    chrome.storage.sync.set(
+      { [STORAGE_KEYS.LAST_ANSWER_SELECTOR]: selectorValue },
+      () => {
+        if (chrome.runtime.lastError) {
+          handleStorageError(chrome.runtime.lastError);
+        }
+      }
+    );
+  } catch (error) {
+    console.error("Error auto-saving answer selector:", error);
   }
 });
 
@@ -98,20 +131,22 @@ document.getElementById("extract-btn").addEventListener("click", () => {
       throw new Error("Output element not found");
     }
 
-    const cssSelectorsInput = document.getElementById("css-selectors-input");
-    if (!cssSelectorsInput) {
+    const questionSelectorInput = document.getElementById("question-selector-input");
+    const optionsSelectorInput = document.getElementById("options-selector-input");
+    const answerSelectorInput = document.getElementById("answer-selector-input");
+
+    if (!questionSelectorInput || !optionsSelectorInput || !answerSelectorInput) {
       outputElem.innerText =
-        "CSS selectors input not found. Please reload the extension.";
+        "Selector inputs not found. Please reload the extension.";
       return;
     }
 
-    const cssSelectorsValue = cssSelectorsInput.value.trim();
-    const selectors = cssSelectorsValue
-      ? cssSelectorsValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
-      : [];
+    const questionSelector = questionSelectorInput.value.trim();
+    const optionsSelector = optionsSelectorInput.value.trim();
+    const answerSelector = answerSelectorInput.value.trim();
 
-    if (selectors.length === 0) {
-      outputElem.innerText = "Please enter at least one valid CSS selector.";
+    if (!questionSelector || !optionsSelector || !answerSelector) {
+      outputElem.innerText = "Please enter all three CSS selectors (Question, Options, Answer).";
       return;
     }
 
@@ -158,8 +193,10 @@ document.getElementById("extract-btn").addEventListener("click", () => {
 
     // Save the current selectors, examName, tagList, prompt, text-to-remove values, and selectors-to-remove as last used
     chrome.storage.sync.set(
-      { 
-        [STORAGE_KEYS.LAST_USED_SELECTORS]: cssSelectorsValue,
+      {
+        [STORAGE_KEYS.LAST_QUESTION_SELECTOR]: questionSelector,
+        [STORAGE_KEYS.LAST_OPTIONS_SELECTOR]: optionsSelector,
+        [STORAGE_KEYS.LAST_ANSWER_SELECTOR]: answerSelector,
         [STORAGE_KEYS.LAST_EXAM_NAME]: examName,
         [STORAGE_KEYS.LAST_TAGS]: tagsValue,
         [STORAGE_KEYS.LAST_PROMPT]: prompt,
@@ -203,7 +240,9 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                 tab.id,
                 {
                   action: "extractText",
-                  selectors: selectors,
+                  questionSelector: questionSelector,
+                  optionsSelector: optionsSelector,
+                  answerSelector: answerSelector,
                   examName: examName, // Pass exam name as string
                   tagList: tagList, // Pass tag list as array
                   prompt: prompt,
@@ -633,7 +672,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Load stored values (selectors, examName, tags, prompt, text-to-remove, selectors-to-remove)
     chrome.storage.sync.get([
-      STORAGE_KEYS.LAST_USED_SELECTORS,
+      STORAGE_KEYS.LAST_QUESTION_SELECTOR,
+      STORAGE_KEYS.LAST_OPTIONS_SELECTOR,
+      STORAGE_KEYS.LAST_ANSWER_SELECTOR,
       STORAGE_KEYS.LAST_EXAM_NAME,
       STORAGE_KEYS.LAST_TAGS,
       STORAGE_KEYS.LAST_PROMPT,
@@ -702,23 +743,20 @@ document.addEventListener("DOMContentLoaded", () => {
         console.warn('Selectors-to-remove input element not found');
       }
 
-      // Set CSS selectors input value if available
-      const cssSelectorsInput = document.getElementById("css-selectors-input");
-      if (cssSelectorsInput) {
-        const lastUsedSelectors = result[STORAGE_KEYS.LAST_USED_SELECTORS];
+      // Set selector input values if available
+      const questionSelectorInput = document.getElementById("question-selector-input");
+      if (questionSelectorInput && result[STORAGE_KEYS.LAST_QUESTION_SELECTOR]) {
+        questionSelectorInput.value = result[STORAGE_KEYS.LAST_QUESTION_SELECTOR];
+      }
 
-        if (lastUsedSelectors) {
-          // If it's an array (from previous version), join with commas
-          if (Array.isArray(lastUsedSelectors)) {
-            cssSelectorsInput.value = lastUsedSelectors.join(', ');
-          } else {
-            // Otherwise use the string directly
-            cssSelectorsInput.value = lastUsedSelectors;
-          }
-        } else {
-          // Default value
-          cssSelectorsInput.value = ".card-body.question-body";
-        }
+      const optionsSelectorInput = document.getElementById("options-selector-input");
+      if (optionsSelectorInput && result[STORAGE_KEYS.LAST_OPTIONS_SELECTOR]) {
+        optionsSelectorInput.value = result[STORAGE_KEYS.LAST_OPTIONS_SELECTOR];
+      }
+
+      const answerSelectorInput = document.getElementById("answer-selector-input");
+      if (answerSelectorInput && result[STORAGE_KEYS.LAST_ANSWER_SELECTOR]) {
+        answerSelectorInput.value = result[STORAGE_KEYS.LAST_ANSWER_SELECTOR];
       }
     });
 
