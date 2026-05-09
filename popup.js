@@ -1,14 +1,18 @@
 // Storage keys constants
 const STORAGE_KEYS = {
   LAST_QUESTION_SELECTOR: "last_question_selector",
+  LAST_QUESTION_CHILD_SELECTOR: "last_question_child_selector",
   LAST_OPTIONS_SELECTOR: "last_options_selector",
+  LAST_OPTIONS_CHILD_SELECTOR: "last_options_child_selector",
   LAST_ANSWER_SELECTOR: "last_answer_selector",
+  LAST_ANSWER_CHILD_SELECTOR: "last_answer_child_selector",
   LAST_EXAM_NAME: "last_exam_name",
   LAST_PROMPT: "last_prompt",
   LAST_TEXT_TO_REMOVE: "last_text_to_remove",
   LAST_SELECTORS_TO_REMOVE: "last_selectors_to_remove",
   LAST_TAGS: "last_tags",
-  API_URL: "api_url"
+  LAST_START_INDEX: "last_start_index",
+  API_URL: "api_url",
 };
 
 // Default API URL (can be configured in options)
@@ -25,91 +29,177 @@ function handleStorageError(error) {
 // and when the popup is closed. No manual save needed.
 
 // Automatically save question selector when it changes
-document.getElementById("question-selector-input").addEventListener("change", (event) => {
-  try {
-    const selectorValue = event.target.value.trim();
-    chrome.storage.sync.set(
-      { [STORAGE_KEYS.LAST_QUESTION_SELECTOR]: selectorValue },
-      () => {
-        if (chrome.runtime.lastError) {
-          handleStorageError(chrome.runtime.lastError);
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Error auto-saving question selector:", error);
-  }
-});
+document
+  .getElementById("question-selector-input")
+  .addEventListener("change", (event) => {
+    try {
+      const selectorValue = event.target.value.trim();
+      chrome.storage.sync.set(
+        { [STORAGE_KEYS.LAST_QUESTION_SELECTOR]: selectorValue },
+        () => {
+          if (chrome.runtime.lastError) {
+            handleStorageError(chrome.runtime.lastError);
+          }
+        },
+      );
+    } catch (error) {
+      console.error("Error auto-saving question selector:", error);
+    }
+  });
+
+// Automatically save question child selector when it changes
+document
+  .getElementById("question-child-selector-input")
+  .addEventListener("change", (event) => {
+    try {
+      const selectorValue = event.target.value.trim();
+      chrome.storage.sync.set(
+        { [STORAGE_KEYS.LAST_QUESTION_CHILD_SELECTOR]: selectorValue },
+        () => {
+          if (chrome.runtime.lastError) {
+            handleStorageError(chrome.runtime.lastError);
+          }
+        },
+      );
+    } catch (error) {
+      console.error("Error auto-saving question child selector:", error);
+    }
+  });
 
 // Automatically save options selector when it changes
-document.getElementById("options-selector-input").addEventListener("change", (event) => {
-  try {
-    const selectorValue = event.target.value.trim();
-    chrome.storage.sync.set(
-      { [STORAGE_KEYS.LAST_OPTIONS_SELECTOR]: selectorValue },
-      () => {
-        if (chrome.runtime.lastError) {
-          handleStorageError(chrome.runtime.lastError);
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Error auto-saving options selector:", error);
-  }
-});
+document
+  .getElementById("options-selector-input")
+  .addEventListener("change", (event) => {
+    try {
+      const selectorValue = event.target.value.trim();
+      chrome.storage.sync.set(
+        { [STORAGE_KEYS.LAST_OPTIONS_SELECTOR]: selectorValue },
+        () => {
+          if (chrome.runtime.lastError) {
+            handleStorageError(chrome.runtime.lastError);
+          }
+        },
+      );
+    } catch (error) {
+      console.error("Error auto-saving options selector:", error);
+    }
+  });
+
+// Automatically save options child selector when it changes
+document
+  .getElementById("options-child-selector-input")
+  .addEventListener("change", (event) => {
+    try {
+      const selectorValue = event.target.value.trim();
+      chrome.storage.sync.set(
+        { [STORAGE_KEYS.LAST_OPTIONS_CHILD_SELECTOR]: selectorValue },
+        () => {
+          if (chrome.runtime.lastError) {
+            handleStorageError(chrome.runtime.lastError);
+          }
+        },
+      );
+    } catch (error) {
+      console.error("Error auto-saving options child selector:", error);
+    }
+  });
 
 // Automatically save answer selector when it changes
-document.getElementById("answer-selector-input").addEventListener("change", (event) => {
-  try {
-    const selectorValue = event.target.value.trim();
-    chrome.storage.sync.set(
-      { [STORAGE_KEYS.LAST_ANSWER_SELECTOR]: selectorValue },
-      () => {
-        if (chrome.runtime.lastError) {
-          handleStorageError(chrome.runtime.lastError);
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Error auto-saving answer selector:", error);
-  }
-});
+document
+  .getElementById("answer-selector-input")
+  .addEventListener("change", (event) => {
+    try {
+      const selectorValue = event.target.value.trim();
+      chrome.storage.sync.set(
+        { [STORAGE_KEYS.LAST_ANSWER_SELECTOR]: selectorValue },
+        () => {
+          if (chrome.runtime.lastError) {
+            handleStorageError(chrome.runtime.lastError);
+          }
+        },
+      );
+    } catch (error) {
+      console.error("Error auto-saving answer selector:", error);
+    }
+  });
+
+// Automatically save answer child selector when it changes
+document
+  .getElementById("answer-child-selector-input")
+  .addEventListener("change", (event) => {
+    try {
+      const selectorValue = event.target.value.trim();
+      chrome.storage.sync.set(
+        { [STORAGE_KEYS.LAST_ANSWER_CHILD_SELECTOR]: selectorValue },
+        () => {
+          if (chrome.runtime.lastError) {
+            handleStorageError(chrome.runtime.lastError);
+          }
+        },
+      );
+    } catch (error) {
+      console.error("Error auto-saving answer child selector:", error);
+    }
+  });
 
 // Automatically save selectors-to-remove values when they change
-document.getElementById("selectors-to-remove-input").addEventListener("change", (event) => {
-  try {
-    const selectorsToRemoveValue = event.target.value.trim();
-    // Save current value to storage
-    chrome.storage.sync.set(
-      { [STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]: selectorsToRemoveValue },
-      () => {
-        if (chrome.runtime.lastError) {
-          handleStorageError(chrome.runtime.lastError);
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Error auto-saving selectors-to-remove:", error);
-  }
-});
+document
+  .getElementById("selectors-to-remove-input")
+  .addEventListener("change", (event) => {
+    try {
+      const selectorsToRemoveValue = event.target.value.trim();
+      // Save current value to storage
+      chrome.storage.sync.set(
+        { [STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]: selectorsToRemoveValue },
+        () => {
+          if (chrome.runtime.lastError) {
+            handleStorageError(chrome.runtime.lastError);
+          }
+        },
+      );
+    } catch (error) {
+      console.error("Error auto-saving selectors-to-remove:", error);
+    }
+  });
 
 // Automatically save text-to-remove values when they change
-document.getElementById("text-to-remove-input").addEventListener("change", (event) => {
-  try {
-    const textToRemoveValue = event.target.value.trim();
-    // Save current value to storage
-    chrome.storage.sync.set(
-      { [STORAGE_KEYS.LAST_TEXT_TO_REMOVE]: textToRemoveValue },
-      () => {
-        if (chrome.runtime.lastError) {
-          handleStorageError(chrome.runtime.lastError);
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Error auto-saving text-to-remove:", error);
-  }
-});
+document
+  .getElementById("text-to-remove-input")
+  .addEventListener("change", (event) => {
+    try {
+      const textToRemoveValue = event.target.value.trim();
+      // Save current value to storage
+      chrome.storage.sync.set(
+        { [STORAGE_KEYS.LAST_TEXT_TO_REMOVE]: textToRemoveValue },
+        () => {
+          if (chrome.runtime.lastError) {
+            handleStorageError(chrome.runtime.lastError);
+          }
+        },
+      );
+    } catch (error) {
+      console.error("Error auto-saving text-to-remove:", error);
+    }
+  });
+
+// Automatically save start index value when it changes
+document
+  .getElementById("start-index-input")
+  .addEventListener("change", (event) => {
+    try {
+      const startIndexValue = event.target.value.trim();
+      chrome.storage.sync.set(
+        { [STORAGE_KEYS.LAST_START_INDEX]: startIndexValue },
+        () => {
+          if (chrome.runtime.lastError) {
+            handleStorageError(chrome.runtime.lastError);
+          }
+        },
+      );
+    } catch (error) {
+      console.error("Error auto-saving start index:", error);
+    }
+  });
 
 // Event delegation for selector actions is no longer needed
 // as we're automatically saving the current value
@@ -131,84 +221,148 @@ document.getElementById("extract-btn").addEventListener("click", () => {
       throw new Error("Output element not found");
     }
 
-    const questionSelectorInput = document.getElementById("question-selector-input");
-    const optionsSelectorInput = document.getElementById("options-selector-input");
-    const answerSelectorInput = document.getElementById("answer-selector-input");
+    const questionSelectorInput = document.getElementById(
+      "question-selector-input",
+    );
+    const questionChildSelectorInput = document.getElementById(
+      "question-child-selector-input",
+    );
+    const optionsSelectorInput = document.getElementById(
+      "options-selector-input",
+    );
+    const optionsChildSelectorInput = document.getElementById(
+      "options-child-selector-input",
+    );
+    const answerSelectorInput = document.getElementById(
+      "answer-selector-input",
+    );
+    const answerChildSelectorInput = document.getElementById(
+      "answer-child-selector-input",
+    );
 
-    if (!questionSelectorInput || !optionsSelectorInput || !answerSelectorInput) {
+    if (
+      !questionSelectorInput ||
+      !optionsSelectorInput ||
+      !answerSelectorInput
+    ) {
       outputElem.innerText =
         "Selector inputs not found. Please reload the extension.";
       return;
     }
 
     const questionSelector = questionSelectorInput.value.trim();
+    const questionChildSelector = questionChildSelectorInput
+      ? questionChildSelectorInput.value.trim()
+      : "";
     const optionsSelector = optionsSelectorInput.value.trim();
+    const optionsChildSelector = optionsChildSelectorInput
+      ? optionsChildSelectorInput.value.trim()
+      : "";
     const answerSelector = answerSelectorInput.value.trim();
+    const answerChildSelector = answerChildSelectorInput
+      ? answerChildSelectorInput.value.trim()
+      : "";
 
     if (!questionSelector || !optionsSelector || !answerSelector) {
-      outputElem.innerText = "Please enter all three CSS selectors (Question, Options, Answer).";
+      outputElem.innerText =
+        "Please enter all three CSS selectors (Question, Options, Answer).";
       return;
     }
 
     // Get exam name value
     const examNameInput = document.getElementById("exam-name-input");
     if (!examNameInput) {
-      console.warn('Exam name input not found in the DOM');
+      console.warn("Exam name input not found in the DOM");
     }
-    const examName = examNameInput ? examNameInput.value.trim() : '';
-    console.log('Exam Name:', examName);
+    const examName = examNameInput ? examNameInput.value.trim() : "";
+    console.log("Exam Name:", examName);
 
     // Get tags value
     const tagsInput = document.getElementById("tags-input");
     if (!tagsInput) {
-      console.warn('Tags input not found in the DOM');
+      console.warn("Tags input not found in the DOM");
     }
-    const tagsValue = tagsInput ? tagsInput.value.trim() : '';
+    const tagsValue = tagsInput ? tagsInput.value.trim() : "";
     const tagList = tagsValue
-      ? tagsValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
+      ? tagsValue
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
       : [];
-    console.log('Tag List:', tagList);
+    console.log("Tag List:", tagList);
 
     // Get prompt value
     const prompt = document.getElementById("prompt-input").value.trim();
+
+    // Get start index (1-based)
+    const startIndexInput = document.getElementById("start-index-input");
+    const startIndexRawValue = startIndexInput
+      ? startIndexInput.value.trim()
+      : "";
+    let startIndex = 1;
+
+    if (startIndexRawValue) {
+      if (!/^\d+$/.test(startIndexRawValue) || Number(startIndexRawValue) < 1) {
+        outputElem.innerText =
+          "Please enter a valid Start Index (1 or higher).";
+        return;
+      }
+      startIndex = Number(startIndexRawValue);
+    }
+
+    if (startIndexInput) {
+      startIndexInput.value = String(startIndex);
+    }
 
     // Get comma-separated text-to-remove values
     const textToRemoveInput = document.getElementById("text-to-remove-input");
     const textToRemoveValue = textToRemoveInput.value.trim();
     const textToRemoveValues = textToRemoveValue
-      ? textToRemoveValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
+      ? textToRemoveValue
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
       : [];
 
     // Get comma-separated selectors-to-remove values
-    const selectorsToRemoveInput = document.getElementById("selectors-to-remove-input");
+    const selectorsToRemoveInput = document.getElementById(
+      "selectors-to-remove-input",
+    );
     const selectorsToRemoveValue = selectorsToRemoveInput.value.trim();
     const selectorsToRemove = selectorsToRemoveValue
-      ? selectorsToRemoveValue.split(',').map(item => item.trim()).filter(item => item.length > 0)
+      ? selectorsToRemoveValue
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
       : [];
 
     // Get user extraction options
     const includeHiddenText = document.getElementById(
-      "include-hidden-text"
+      "include-hidden-text",
     ).checked;
 
     // Save the current selectors, examName, tagList, prompt, text-to-remove values, and selectors-to-remove as last used
     chrome.storage.sync.set(
       {
         [STORAGE_KEYS.LAST_QUESTION_SELECTOR]: questionSelector,
+        [STORAGE_KEYS.LAST_QUESTION_CHILD_SELECTOR]: questionChildSelector,
         [STORAGE_KEYS.LAST_OPTIONS_SELECTOR]: optionsSelector,
+        [STORAGE_KEYS.LAST_OPTIONS_CHILD_SELECTOR]: optionsChildSelector,
         [STORAGE_KEYS.LAST_ANSWER_SELECTOR]: answerSelector,
+        [STORAGE_KEYS.LAST_ANSWER_CHILD_SELECTOR]: answerChildSelector,
         [STORAGE_KEYS.LAST_EXAM_NAME]: examName,
         [STORAGE_KEYS.LAST_TAGS]: tagsValue,
         [STORAGE_KEYS.LAST_PROMPT]: prompt,
+        [STORAGE_KEYS.LAST_START_INDEX]: String(startIndex),
         [STORAGE_KEYS.LAST_TEXT_TO_REMOVE]: textToRemoveValue,
-        [STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]: selectorsToRemoveValue
+        [STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE]: selectorsToRemoveValue,
       },
       () => {
         if (chrome.runtime.lastError) {
           handleStorageError(chrome.runtime.lastError);
           // Continue with extraction even if saving fails
         }
-      }
+      },
     );
 
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -246,10 +400,14 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                   examName: examName, // Pass exam name as string
                   tagList: tagList, // Pass tag list as array
                   prompt: prompt,
+                  startIndex: startIndex,
                   textToRemoveValues: textToRemoveValues,
                   selectorsToRemove: selectorsToRemove, // Pass the selectors to remove as array
                   options: {
                     includeHiddenText: includeHiddenText,
+                    questionChildSelector: questionChildSelector,
+                    optionsChildSelector: optionsChildSelector,
+                    answerChildSelector: answerChildSelector,
                   },
                 },
                 (response) => {
@@ -266,21 +424,27 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                       const outputElem = document.getElementById("output");
 
                       // If the response data is a string representing JSON
-                      if (typeof response.data === 'string') {
+                      if (typeof response.data === "string") {
                         try {
                           // Parse the JSON string to an object
                           const jsonData = JSON.parse(response.data);
 
                           // Convert back to a formatted string
-                          outputElem.innerText = JSON.stringify(jsonData, null, 2);
+                          outputElem.innerText = JSON.stringify(
+                            jsonData,
+                            null,
+                            2,
+                          );
                         } catch (e) {
                           // If parsing fails, just use the original string
-                          console.error('Error parsing JSON response:', e);
-                          outputElem.innerText = response.data || "No content found.";
+                          console.error("Error parsing JSON response:", e);
+                          outputElem.innerText =
+                            response.data || "No content found.";
                         }
                       } else {
                         // Just use the data as is
-                        outputElem.innerText = response.data || "No content found.";
+                        outputElem.innerText =
+                          response.data || "No content found.";
                       }
 
                       // Show copy and send-to-api buttons if we have content
@@ -302,19 +466,19 @@ document.getElementById("extract-btn").addEventListener("click", () => {
                         }
                       }
                     } catch (e) {
-                      console.error('Error processing response:', e);
-                      document.getElementById("output").innerText = response.data || "No content found.";
+                      console.error("Error processing response:", e);
+                      document.getElementById("output").innerText =
+                        response.data || "No content found.";
                     }
                   } else {
                     // Handle error
                     const errorMsg =
                       response?.error || "Unknown error during extraction";
                     console.error("Extraction error:", errorMsg);
-                    document.getElementById(
-                      "output"
-                    ).innerText = `Error during extraction: ${errorMsg}`;
+                    document.getElementById("output").innerText =
+                      `Error during extraction: ${errorMsg}`;
                   }
-                }
+                },
               );
             }
           })
@@ -372,7 +536,9 @@ document.getElementById("copy-btn").addEventListener("click", () => {
  */
 async function sendToAPI(jsonData) {
   // Show API response container
-  const apiResponseContainer = document.getElementById("api-response-container");
+  const apiResponseContainer = document.getElementById(
+    "api-response-container",
+  );
   const apiResponseStatus = document.getElementById("api-response-status");
 
   if (apiResponseContainer && apiResponseStatus) {
@@ -405,7 +571,8 @@ async function sendToAPI(jsonData) {
     }
 
     // Parse the JSON data
-    const jsonObj = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
+    const jsonObj =
+      typeof jsonData === "string" ? JSON.parse(jsonData) : jsonData;
 
     // Update status in UI
     const sendBtn = document.getElementById("send-to-api-btn");
@@ -417,24 +584,25 @@ async function sendToAPI(jsonData) {
     let response;
     try {
       // If using the local API endpoint, ensure we're using the right URL
-      const finalUrl = apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1') 
-        ? apiUrl 
-        : 'http://localhost:8888/api/v1/manage/mcq/save/text';
+      const finalUrl =
+        apiUrl.includes("localhost") || apiUrl.includes("127.0.0.1")
+          ? apiUrl
+          : "http://localhost:8888/api/v1/manage/mcq/save/text";
 
       response = await fetch(finalUrl, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(jsonObj),
         // Add these options to ensure network request goes through
-        mode: 'cors', // This might need to be 'no-cors' depending on the server
-        cache: 'no-cache',
-        credentials: 'include', // Include credentials for local API
-        redirect: 'follow'
+        mode: "cors", // This might need to be 'no-cors' depending on the server
+        cache: "no-cache",
+        credentials: "include", // Include credentials for local API
+        redirect: "follow",
       });
     } catch (networkError) {
-      console.error('Network error in fetch:', networkError);
+      console.error("Network error in fetch:", networkError);
       throw new Error(`Failed to fetch: ${networkError.message}`);
     }
 
@@ -459,11 +627,11 @@ async function sendToAPI(jsonData) {
       if (response.ok) {
         apiResponseStatus.classList.remove("pending", "error");
         apiResponseStatus.classList.add("success");
-        apiResponseStatus.textContent = `Success (${response.status}): ${JSON.stringify(responseData, null, 2).substring(0, 150)}${JSON.stringify(responseData, null, 2).length > 150 ? '...' : ''}`;
+        apiResponseStatus.textContent = `Success (${response.status}): ${JSON.stringify(responseData, null, 2).substring(0, 150)}${JSON.stringify(responseData, null, 2).length > 150 ? "..." : ""}`;
       } else {
         apiResponseStatus.classList.remove("pending", "success");
         apiResponseStatus.classList.add("error");
-        apiResponseStatus.textContent = `Error (${response.status}): ${responseText.substring(0, 150)}${responseText.length > 150 ? '...' : ''}`;
+        apiResponseStatus.textContent = `Error (${response.status}): ${responseText.substring(0, 150)}${responseText.length > 150 ? "..." : ""}`;
       }
     }
 
@@ -485,14 +653,15 @@ async function sendToAPI(jsonData) {
 
     return responseData;
   } catch (error) {
-    console.error('Error sending data to API:', error);
+    console.error("Error sending data to API:", error);
 
     // If it's a network error, try using the background script instead
-    if (error.message.includes('Failed to fetch') && !useBackgroundFallback) {
+    if (error.message.includes("Failed to fetch") && !useBackgroundFallback) {
       useBackgroundFallback = true;
 
       if (apiResponseStatus) {
-        apiResponseStatus.textContent = "Using background fallback for API request...";
+        apiResponseStatus.textContent =
+          "Using background fallback for API request...";
       }
 
       try {
@@ -501,25 +670,34 @@ async function sendToAPI(jsonData) {
           // Store apiUrl in a local variable to ensure it's defined
           const apiUrlForBg = result[STORAGE_KEYS.API_URL] || DEFAULT_API_URL;
           // If using the local API endpoint, ensure we're using the right URL
-          const finalUrl = apiUrlForBg.includes('localhost') || apiUrlForBg.includes('127.0.0.1')
-            ? apiUrlForBg 
-            : 'http://localhost:8888/api/v1/manage/mcq/save/text';
+          const finalUrl =
+            apiUrlForBg.includes("localhost") ||
+            apiUrlForBg.includes("127.0.0.1")
+              ? apiUrlForBg
+              : "http://localhost:8888/api/v1/manage/mcq/save/text";
 
-          chrome.runtime.sendMessage({
-            action: "apiCall",
-            url: finalUrl,
-            method: "POST",
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(jsonObj)
-          }, response => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else if (!response || !response.success) {
-              reject(new Error(response?.error || "Unknown error in background request"));
-            } else {
-              resolve(response.data);
-            }
-          });
+          chrome.runtime.sendMessage(
+            {
+              action: "apiCall",
+              url: finalUrl,
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(jsonObj),
+            },
+            (response) => {
+              if (chrome.runtime.lastError) {
+                reject(new Error(chrome.runtime.lastError.message));
+              } else if (!response || !response.success) {
+                reject(
+                  new Error(
+                    response?.error || "Unknown error in background request",
+                  ),
+                );
+              } else {
+                resolve(response.data);
+              }
+            },
+          );
         });
 
         // If we got here, the background request succeeded
@@ -527,11 +705,11 @@ async function sendToAPI(jsonData) {
           if (bgResponse.ok) {
             apiResponseStatus.classList.remove("pending", "error");
             apiResponseStatus.classList.add("success");
-            apiResponseStatus.textContent = `Success via background (${bgResponse.status}): ${bgResponse.text.substring(0, 150)}${bgResponse.text.length > 150 ? '...' : ''}`;
+            apiResponseStatus.textContent = `Success via background (${bgResponse.status}): ${bgResponse.text.substring(0, 150)}${bgResponse.text.length > 150 ? "..." : ""}`;
           } else {
             apiResponseStatus.classList.remove("pending", "success");
             apiResponseStatus.classList.add("error");
-            apiResponseStatus.textContent = `Error via background (${bgResponse.status}): ${bgResponse.text.substring(0, 150)}${bgResponse.text.length > 150 ? '...' : ''}`;
+            apiResponseStatus.textContent = `Error via background (${bgResponse.status}): ${bgResponse.text.substring(0, 150)}${bgResponse.text.length > 150 ? "..." : ""}`;
           }
         }
 
@@ -551,7 +729,7 @@ async function sendToAPI(jsonData) {
 
         return bgResponse;
       } catch (bgError) {
-        console.error('Background API call failed:', bgError);
+        console.error("Background API call failed:", bgError);
         throw bgError; // Let the original error handler deal with this
       }
     }
@@ -576,7 +754,7 @@ async function sendToAPI(jsonData) {
         sendBtn.disabled = false;
       }, 2000);
     } else {
-      console.error('Send to API button not found in the DOM');
+      console.error("Send to API button not found in the DOM");
     }
 
     throw error;
@@ -653,7 +831,7 @@ function loadStoredValueToInput(storageKey, inputId) {
 
     if (storedValue !== undefined && storedValue !== null) {
       if (Array.isArray(storedValue)) {
-        inputElement.value = storedValue.join(', ');
+        inputElement.value = storedValue.join(", ");
       } else {
         inputElement.value = storedValue;
       }
@@ -670,95 +848,171 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // No need to initialize text-to-remove container anymore since we use a single input field
 
-      // Load stored values (selectors, examName, tags, prompt, text-to-remove, selectors-to-remove)
-    chrome.storage.sync.get([
-      STORAGE_KEYS.LAST_QUESTION_SELECTOR,
-      STORAGE_KEYS.LAST_OPTIONS_SELECTOR,
-      STORAGE_KEYS.LAST_ANSWER_SELECTOR,
-      STORAGE_KEYS.LAST_EXAM_NAME,
-      STORAGE_KEYS.LAST_TAGS,
-      STORAGE_KEYS.LAST_PROMPT,
-      STORAGE_KEYS.LAST_TEXT_TO_REMOVE,
-      STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE
-    ], (result) => {
-      if (chrome.runtime.lastError) {
-        handleStorageError(chrome.runtime.lastError);
-        // Fall back to default selector value (now handled in HTML)
-        return;
-      }
-
-      // Set exam name input value if available
-      const examNameInput = document.getElementById("exam-name-input");
-      if (examNameInput) {
-        if (result[STORAGE_KEYS.LAST_EXAM_NAME] !== undefined && result[STORAGE_KEYS.LAST_EXAM_NAME] !== null) {
-          examNameInput.value = result[STORAGE_KEYS.LAST_EXAM_NAME];
+    // Load stored values (selectors, examName, tags, prompt, text-to-remove, selectors-to-remove)
+    chrome.storage.sync.get(
+      [
+        STORAGE_KEYS.LAST_QUESTION_SELECTOR,
+        STORAGE_KEYS.LAST_QUESTION_CHILD_SELECTOR,
+        STORAGE_KEYS.LAST_OPTIONS_SELECTOR,
+        STORAGE_KEYS.LAST_OPTIONS_CHILD_SELECTOR,
+        STORAGE_KEYS.LAST_ANSWER_SELECTOR,
+        STORAGE_KEYS.LAST_ANSWER_CHILD_SELECTOR,
+        STORAGE_KEYS.LAST_EXAM_NAME,
+        STORAGE_KEYS.LAST_TAGS,
+        STORAGE_KEYS.LAST_PROMPT,
+        STORAGE_KEYS.LAST_START_INDEX,
+        STORAGE_KEYS.LAST_TEXT_TO_REMOVE,
+        STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE,
+      ],
+      (result) => {
+        if (chrome.runtime.lastError) {
+          handleStorageError(chrome.runtime.lastError);
+          // Fall back to default selector value (now handled in HTML)
+          return;
         }
-      } else {
-        console.warn('Exam name input element not found');
-      }
 
-      // Set tags input value if available
-      const tagsInput = document.getElementById("tags-input");
-      if (tagsInput) {
-        if (result[STORAGE_KEYS.LAST_TAGS] !== undefined && result[STORAGE_KEYS.LAST_TAGS] !== null) {
-          tagsInput.value = result[STORAGE_KEYS.LAST_TAGS];
-        }
-      } else {
-        console.warn('Tags input element not found');
-      }
-
-      // Set prompt input value if available
-      const promptInput = document.getElementById("prompt-input");
-      if (promptInput) {
-        if (result[STORAGE_KEYS.LAST_PROMPT] !== undefined) {
-          promptInput.value = result[STORAGE_KEYS.LAST_PROMPT];
-        }
-      } else {
-        console.warn('Prompt input element not found');
-      }
-
-      // Set text-to-remove input value if available
-      const textToRemoveInput = document.getElementById("text-to-remove-input");
-      if (textToRemoveInput) {
-        if (result[STORAGE_KEYS.LAST_TEXT_TO_REMOVE] !== undefined) {
-          textToRemoveInput.value = result[STORAGE_KEYS.LAST_TEXT_TO_REMOVE];
-        }
-      } else {
-        console.warn('Text-to-remove input element not found');
-      }
-
-      // Set selectors-to-remove input value if available
-      const selectorsToRemoveInput = document.getElementById("selectors-to-remove-input");
-      if (selectorsToRemoveInput) {
-        if (result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE] !== undefined) {
-          // If it's an array (from previous version), join with commas
-          if (Array.isArray(result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE])) {
-            selectorsToRemoveInput.value = result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE].join(', ');
-          } else {
-            // Otherwise use the string directly
-            selectorsToRemoveInput.value = result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE];
+        // Set exam name input value if available
+        const examNameInput = document.getElementById("exam-name-input");
+        if (examNameInput) {
+          if (
+            result[STORAGE_KEYS.LAST_EXAM_NAME] !== undefined &&
+            result[STORAGE_KEYS.LAST_EXAM_NAME] !== null
+          ) {
+            examNameInput.value = result[STORAGE_KEYS.LAST_EXAM_NAME];
           }
+        } else {
+          console.warn("Exam name input element not found");
         }
-      } else {
-        console.warn('Selectors-to-remove input element not found');
-      }
 
-      // Set selector input values if available
-      const questionSelectorInput = document.getElementById("question-selector-input");
-      if (questionSelectorInput && result[STORAGE_KEYS.LAST_QUESTION_SELECTOR]) {
-        questionSelectorInput.value = result[STORAGE_KEYS.LAST_QUESTION_SELECTOR];
-      }
+        // Set tags input value if available
+        const tagsInput = document.getElementById("tags-input");
+        if (tagsInput) {
+          if (
+            result[STORAGE_KEYS.LAST_TAGS] !== undefined &&
+            result[STORAGE_KEYS.LAST_TAGS] !== null
+          ) {
+            tagsInput.value = result[STORAGE_KEYS.LAST_TAGS];
+          }
+        } else {
+          console.warn("Tags input element not found");
+        }
 
-      const optionsSelectorInput = document.getElementById("options-selector-input");
-      if (optionsSelectorInput && result[STORAGE_KEYS.LAST_OPTIONS_SELECTOR]) {
-        optionsSelectorInput.value = result[STORAGE_KEYS.LAST_OPTIONS_SELECTOR];
-      }
+        // Set prompt input value if available
+        const promptInput = document.getElementById("prompt-input");
+        if (promptInput) {
+          if (result[STORAGE_KEYS.LAST_PROMPT] !== undefined) {
+            promptInput.value = result[STORAGE_KEYS.LAST_PROMPT];
+          }
+        } else {
+          console.warn("Prompt input element not found");
+        }
 
-      const answerSelectorInput = document.getElementById("answer-selector-input");
-      if (answerSelectorInput && result[STORAGE_KEYS.LAST_ANSWER_SELECTOR]) {
-        answerSelectorInput.value = result[STORAGE_KEYS.LAST_ANSWER_SELECTOR];
-      }
-    });
+        // Set start index input value if available
+        const startIndexInput = document.getElementById("start-index-input");
+        if (startIndexInput) {
+          if (result[STORAGE_KEYS.LAST_START_INDEX] !== undefined) {
+            startIndexInput.value = result[STORAGE_KEYS.LAST_START_INDEX];
+          }
+        } else {
+          console.warn("Start index input element not found");
+        }
+
+        // Set text-to-remove input value if available
+        const textToRemoveInput = document.getElementById(
+          "text-to-remove-input",
+        );
+        if (textToRemoveInput) {
+          if (result[STORAGE_KEYS.LAST_TEXT_TO_REMOVE] !== undefined) {
+            textToRemoveInput.value = result[STORAGE_KEYS.LAST_TEXT_TO_REMOVE];
+          }
+        } else {
+          console.warn("Text-to-remove input element not found");
+        }
+
+        // Set selectors-to-remove input value if available
+        const selectorsToRemoveInput = document.getElementById(
+          "selectors-to-remove-input",
+        );
+        if (selectorsToRemoveInput) {
+          if (result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE] !== undefined) {
+            // If it's an array (from previous version), join with commas
+            if (Array.isArray(result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE])) {
+              selectorsToRemoveInput.value =
+                result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE].join(", ");
+            } else {
+              // Otherwise use the string directly
+              selectorsToRemoveInput.value =
+                result[STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE];
+            }
+          }
+        } else {
+          console.warn("Selectors-to-remove input element not found");
+        }
+
+        // Set selector input values if available
+        const questionSelectorInput = document.getElementById(
+          "question-selector-input",
+        );
+        if (
+          questionSelectorInput &&
+          result[STORAGE_KEYS.LAST_QUESTION_SELECTOR]
+        ) {
+          questionSelectorInput.value =
+            result[STORAGE_KEYS.LAST_QUESTION_SELECTOR];
+        }
+
+        const optionsSelectorInput = document.getElementById(
+          "options-selector-input",
+        );
+        if (
+          optionsSelectorInput &&
+          result[STORAGE_KEYS.LAST_OPTIONS_SELECTOR]
+        ) {
+          optionsSelectorInput.value =
+            result[STORAGE_KEYS.LAST_OPTIONS_SELECTOR];
+        }
+
+        const questionChildSelectorInput = document.getElementById(
+          "question-child-selector-input",
+        );
+        if (
+          questionChildSelectorInput &&
+          result[STORAGE_KEYS.LAST_QUESTION_CHILD_SELECTOR]
+        ) {
+          questionChildSelectorInput.value =
+            result[STORAGE_KEYS.LAST_QUESTION_CHILD_SELECTOR];
+        }
+
+        const optionsChildSelectorInput = document.getElementById(
+          "options-child-selector-input",
+        );
+        if (
+          optionsChildSelectorInput &&
+          result[STORAGE_KEYS.LAST_OPTIONS_CHILD_SELECTOR]
+        ) {
+          optionsChildSelectorInput.value =
+            result[STORAGE_KEYS.LAST_OPTIONS_CHILD_SELECTOR];
+        }
+
+        const answerSelectorInput = document.getElementById(
+          "answer-selector-input",
+        );
+        if (answerSelectorInput && result[STORAGE_KEYS.LAST_ANSWER_SELECTOR]) {
+          answerSelectorInput.value = result[STORAGE_KEYS.LAST_ANSWER_SELECTOR];
+        }
+
+        const answerChildSelectorInput = document.getElementById(
+          "answer-child-selector-input",
+        );
+        if (
+          answerChildSelectorInput &&
+          result[STORAGE_KEYS.LAST_ANSWER_CHILD_SELECTOR]
+        ) {
+          answerChildSelectorInput.value =
+            result[STORAGE_KEYS.LAST_ANSWER_CHILD_SELECTOR];
+        }
+      },
+    );
 
     // Initialize copy and send-to-api buttons with hidden class
     const copyBtn = document.getElementById("copy-btn");
@@ -773,7 +1027,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Initialize API response container
-    const apiResponseContainer = document.getElementById("api-response-container");
+    const apiResponseContainer = document.getElementById(
+      "api-response-container",
+    );
     if (apiResponseContainer) {
       apiResponseContainer.classList.add("hidden");
     }
@@ -783,22 +1039,76 @@ document.addEventListener("DOMContentLoaded", () => {
     // Fallback approach: Try loading each field individually
     setTimeout(() => {
       // Check if fields still need values
-      if (document.getElementById("exam-name-input") && !document.getElementById("exam-name-input").value) {
+      if (
+        document.getElementById("exam-name-input") &&
+        !document.getElementById("exam-name-input").value
+      ) {
         loadStoredValueToInput(STORAGE_KEYS.LAST_EXAM_NAME, "exam-name-input");
       }
 
-      if (document.getElementById("tags-input") && !document.getElementById("tags-input").value) {
+      if (
+        document.getElementById("tags-input") &&
+        !document.getElementById("tags-input").value
+      ) {
         loadStoredValueToInput(STORAGE_KEYS.LAST_TAGS, "tags-input");
+      }
+
+      if (
+        document.getElementById("start-index-input") &&
+        !document.getElementById("start-index-input").value
+      ) {
+        loadStoredValueToInput(
+          STORAGE_KEYS.LAST_START_INDEX,
+          "start-index-input",
+        );
+      }
+
+      const questionChildSelectorInput = document.getElementById(
+        "question-child-selector-input",
+      );
+      if (questionChildSelectorInput && !questionChildSelectorInput.value) {
+        loadStoredValueToInput(
+          STORAGE_KEYS.LAST_QUESTION_CHILD_SELECTOR,
+          "question-child-selector-input",
+        );
+      }
+
+      const optionsChildSelectorInput = document.getElementById(
+        "options-child-selector-input",
+      );
+      if (optionsChildSelectorInput && !optionsChildSelectorInput.value) {
+        loadStoredValueToInput(
+          STORAGE_KEYS.LAST_OPTIONS_CHILD_SELECTOR,
+          "options-child-selector-input",
+        );
+      }
+
+      const answerChildSelectorInput = document.getElementById(
+        "answer-child-selector-input",
+      );
+      if (answerChildSelectorInput && !answerChildSelectorInput.value) {
+        loadStoredValueToInput(
+          STORAGE_KEYS.LAST_ANSWER_CHILD_SELECTOR,
+          "answer-child-selector-input",
+        );
       }
 
       const textToRemoveInput = document.getElementById("text-to-remove-input");
       if (textToRemoveInput && !textToRemoveInput.value) {
-        loadStoredValueToInput(STORAGE_KEYS.LAST_TEXT_TO_REMOVE, "text-to-remove-input");
+        loadStoredValueToInput(
+          STORAGE_KEYS.LAST_TEXT_TO_REMOVE,
+          "text-to-remove-input",
+        );
       }
 
-      const selectorsToRemoveInput = document.getElementById("selectors-to-remove-input");
+      const selectorsToRemoveInput = document.getElementById(
+        "selectors-to-remove-input",
+      );
       if (selectorsToRemoveInput && !selectorsToRemoveInput.value) {
-        loadStoredValueToInput(STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE, "selectors-to-remove-input");
+        loadStoredValueToInput(
+          STORAGE_KEYS.LAST_SELECTORS_TO_REMOVE,
+          "selectors-to-remove-input",
+        );
       }
     }, 100); // Small delay to ensure DOM is ready
 
@@ -813,7 +1123,8 @@ document.addEventListener("DOMContentLoaded", () => {
           outputText !== "No content found."
         ) {
           try {
-            document.getElementById("output").innerText = "Preparing to send data to API...";
+            document.getElementById("output").innerText =
+              "Preparing to send data to API...";
 
             // Fetch API URL to display it before sending
             chrome.storage.sync.get([STORAGE_KEYS.API_URL], async (result) => {
@@ -828,7 +1139,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
               // Create a status message but keep the original content in a hidden div
               const statusMessage = `Sending to: ${apiUrl}\n\nPreparing data...`;
-              document.getElementById("output").innerHTML = `<div id="api-status-message">${statusMessage}</div><div id="original-output" style="display:none;">${originalOutputText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+              document.getElementById("output").innerHTML =
+                `<div id="api-status-message">${statusMessage}</div><div id="original-output" style="display:none;">${originalOutputText.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>`;
 
               // Short delay to let user see the URL
               setTimeout(async () => {
@@ -836,21 +1148,25 @@ document.addEventListener("DOMContentLoaded", () => {
                   await sendToAPI(originalOutputText);
                   // Restore original output text after successful API call
                   setTimeout(() => {
-                    document.getElementById("output").innerText = originalOutputText;
+                    document.getElementById("output").innerText =
+                      originalOutputText;
                   }, 1000);
                 } catch (error) {
                   console.error("Error sending to API:", error);
                   // Restore original output text immediately on error
-                  document.getElementById("output").innerText = originalOutputText;
+                  document.getElementById("output").innerText =
+                    originalOutputText;
                 }
               }, 500);
             });
           } catch (error) {
             console.error("Error in API send process:", error);
-            document.getElementById("output").innerText = `Error: ${error.message}`;
+            document.getElementById("output").innerText =
+              `Error: ${error.message}`;
           }
         } else {
-          document.getElementById("output").innerText = "No content to send. Please extract text first.";
+          document.getElementById("output").innerText =
+            "No content to send. Please extract text first.";
         }
       });
     }
