@@ -66,34 +66,6 @@ def _as_int(value: object) -> int | None:
     return None
 
 
-def _as_float(value: object) -> float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            return None
-        try:
-            return float(stripped)
-        except ValueError:
-            return None
-    return None
-
-
-def _format_duration(seconds: float | None) -> str:
-    if seconds is None:
-        return "-"
-
-    total_seconds = max(0, int(seconds))
-    hours, rem = divmod(total_seconds, 3600)
-    minutes, secs = divmod(rem, 60)
-    if hours > 0:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    return f"{minutes:02d}:{secs:02d}"
-
-
 def main() -> None:
     st.set_page_config(page_title="MCQ Crawler Dashboard", layout="wide")
     st.title("MCQ Crawler Personal Dashboard")
@@ -233,17 +205,7 @@ def main() -> None:
     checkpoint_path = OUTPUT_DIR / "checkpoint.json"
     checkpoint = read_checkpoint(checkpoint_path)
 
-    current_page_index = _as_int(checkpoint.get("next_index")) if isinstance(checkpoint, dict) else None
-    records_written = _as_int(checkpoint.get("records_written")) if isinstance(checkpoint, dict) else None
-    target_records = _as_int(checkpoint.get("max_records")) if isinstance(checkpoint, dict) else None
-    current_page_candidates_found = _as_int(checkpoint.get("current_page_candidates_found")) if isinstance(checkpoint, dict) else None
-    current_page_saved = _as_int(checkpoint.get("current_page_saved")) if isinstance(checkpoint, dict) else None
-    current_page_skipped = _as_int(checkpoint.get("current_page_skipped")) if isinstance(checkpoint, dict) else None
-    last_page_candidates_found = _as_int(checkpoint.get("last_page_candidates_found")) if isinstance(checkpoint, dict) else None
-    last_page_saved = _as_int(checkpoint.get("last_page_saved")) if isinstance(checkpoint, dict) else None
-    last_page_skipped = _as_int(checkpoint.get("last_page_skipped")) if isinstance(checkpoint, dict) else None
     current_page_llm_assists = _as_int(checkpoint.get("current_page_llm_assists")) if isinstance(checkpoint, dict) else None
-    last_page_llm_assists = _as_int(checkpoint.get("last_page_llm_assists")) if isinstance(checkpoint, dict) else None
     llm_assist_attempts_total = _as_int(checkpoint.get("llm_assist_attempts_total")) if isinstance(checkpoint, dict) else None
     llm_assist_saved_count = _as_int(checkpoint.get("llm_assist_saved_count")) if isinstance(checkpoint, dict) else None
     llm_assist_last_trigger_reason = (
@@ -251,93 +213,8 @@ def main() -> None:
         if isinstance(checkpoint, dict)
         else ""
     )
-    pages_processed = _as_int(checkpoint.get("pages_processed")) if isinstance(checkpoint, dict) else None
 
     summary = st.session_state.get("last_run_summary")
-    if target_records is None and isinstance(summary, dict):
-        target_records = _as_int(summary.get("max_records"))
-
-    now_epoch = time.time()
-
-    run_started_at_epoch = (
-        _as_float(checkpoint.get("run_started_at_epoch"))
-        if isinstance(checkpoint, dict)
-        else None
-    )
-    page_started_at_epoch = (
-        _as_float(checkpoint.get("page_started_at_epoch"))
-        if isinstance(checkpoint, dict)
-        else None
-    )
-
-    run_elapsed = (
-        _format_duration(now_epoch - run_started_at_epoch)
-        if run_started_at_epoch is not None
-        else "-"
-    )
-    page_elapsed = (
-        _format_duration(now_epoch - page_started_at_epoch)
-        if page_started_at_epoch is not None
-        else "-"
-    )
-
-    avg_seconds_per_page: float | None = None
-    if run_started_at_epoch is not None and records_written is not None and records_written > 0:
-        avg_seconds_per_page = max(0.0, now_epoch - run_started_at_epoch) / records_written
-
-    avg_page_elapsed = _format_duration(avg_seconds_per_page)
-
-    eta_remaining = "-"
-    if avg_seconds_per_page is not None and target_records is not None and records_written is not None:
-        remaining_records = max(0, target_records - records_written)
-        eta_remaining = _format_duration(avg_seconds_per_page * remaining_records)
-
-    st.subheader("Live progress")
-    p1, p2, p3, p4, p5 = st.columns(5)
-    p1.metric("Current page index", str(current_page_index) if current_page_index is not None else "-")
-    p2.metric("Run elapsed", run_elapsed)
-    p3.metric("Current page elapsed", page_elapsed)
-    p4.metric("Avg time per page", avg_page_elapsed)
-    p5.metric("ETA remaining", eta_remaining)
-
-    st.caption("Page extraction counters")
-    pc1, pc2, pc3, pc4 = st.columns(4)
-    pc1.metric(
-        "Current page (found/saved/skipped)",
-        (
-            f"{current_page_candidates_found or 0}/{current_page_saved or 0}/{current_page_skipped or 0}"
-            if any(value is not None for value in [current_page_candidates_found, current_page_saved, current_page_skipped])
-            else "-"
-        ),
-    )
-    pc2.metric(
-        "Last page (found/saved/skipped)",
-        (
-            f"{last_page_candidates_found or 0}/{last_page_saved or 0}/{last_page_skipped or 0}"
-            if any(value is not None for value in [last_page_candidates_found, last_page_saved, last_page_skipped])
-            else "-"
-        ),
-    )
-    pc3.metric("Pages processed", str(pages_processed) if pages_processed is not None else "-")
-    pc4.metric(
-        "Current page yield",
-        (
-            f"{current_page_saved}/{current_page_candidates_found}"
-            if current_page_saved is not None and current_page_candidates_found not in (None, 0)
-            else "-"
-        ),
-    )
-
-    st.caption("LLM assist counters")
-    ac1, ac2, ac3, ac4 = st.columns(4)
-    ac1.metric("Assist attempts (total)", str(llm_assist_attempts_total or 0))
-    ac2.metric("Assist saves (total)", str(llm_assist_saved_count or 0))
-    ac3.metric("Current page assists", str(current_page_llm_assists or 0))
-    ac4.metric("Last page assists", str(last_page_llm_assists or 0))
-    st.caption(
-        "Last assist trigger reason: "
-        + (llm_assist_last_trigger_reason if llm_assist_last_trigger_reason else "-")
-    )
 
     recent_logs = manager.get_logs(limit=120)
     model_error = None

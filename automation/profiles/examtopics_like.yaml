@@ -1,22 +1,42 @@
+question_containers:
+  - ".questions-container .exam-question-card"
+  - ".exam-question-card"
+  - ".card.exam-question-card"
+
 question:
+  - ".question-body > p.card-text:not(.question-answer)"
+  - ".question-body p.card-text:not(.question-answer)"
+  - ".card-body.question-body > p.card-text"
   - ".panel-body > p.lead"
   - "p.lead"
 
 options:
+  - ".question-choices-container > ul > li"
+  - ".question-choices-container li.multi-choice-item"
+  - ".question-body ul > li"
   - ".panel-body ol.ui-selectable > li.ui-selectee"
   - ".panel-body ol.rounded-list > li.ui-selectee"
   - ".panel-body ol.rounded-list-multi > li.ui-selectee"
 
 answer:
+  - "p.question-answer .correct-answer-box"
+  - "p.question-answer"
+  - ".correct-answer-box"
   - "div[id^='answerQ'] > p"
   - ".panel-body div[id^='answerQ'] p"
 
 show_answer_buttons:
+  - "a.reveal-solution"
+  - ".question-body a.reveal-solution"
+  - "a:has-text('Reveal Solution')"
   - "a[data-toggle='collapse'][href*='answerQ']"
   - "button[data-toggle='collapse'][data-target*='answerQ']"
   - "a.btn.btn-primary.btn-lg[data-toggle='collapse']"
 
 next_buttons:
+  - "a:has-text('Next Questions')"
+  - "a.btn.btn-success.pull-right[href*='/view/']"
+  - "a[rel='next']"
   - "a[role='button'][data-toggle='collapse'][href*='collapse_']"
   - "a.collapsed.btn.btn-default.btn-lg[href*='collapse_']"
   - "a:has-text('Next Question')"
