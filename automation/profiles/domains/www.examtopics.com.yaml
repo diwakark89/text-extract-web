@@ -1,0 +1,14 @@
+question:
+- .question-body > p.card-text:not(.question-answer)
+_meta:
+  selector_success_counts:
+    question:
+      .question-body > p.card-text:not(.question-answer): 30
+    options:
+      .question-choices-container > ul > li: 30
+    answer:
+      p.question-answer .correct-answer-box: 30
+options:
+- .question-choices-container > ul > li
+answer:
+- p.question-answer .correct-answer-box

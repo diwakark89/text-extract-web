@@ -19,6 +19,9 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             resume=True,
             headless=True,
             prompt_for_login_at_start=True,
+            enable_auto_login=True,
+            auth_file_path="profiles/auth_hosts.yaml",
+            auto_login_timeout_seconds=55,
             selector_debug=True,
             require_answers=True,
             auto_learn_profiles=True,
@@ -41,6 +44,11 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("--resume", command)
         self.assertIn("--headless", command)
         self.assertIn("--prompt-for-login-at-start", command)
+        self.assertIn("--auto-login", command)
+        self.assertIn("--auth-file", command)
+        self.assertIn("profiles/auth_hosts.yaml", command)
+        self.assertIn("--auto-login-timeout-seconds", command)
+        self.assertIn("55", command)
         self.assertIn("--selector-debug", command)
         self.assertIn("--require-answers", command)
         self.assertIn("--auto-learn-profiles", command)
@@ -52,6 +60,9 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             resume=False,
             headless=False,
             prompt_for_login_at_start=False,
+            enable_auto_login=False,
+            auth_file_path="profiles/auth_hosts.yaml",
+            auto_login_timeout_seconds=40,
             selector_debug=False,
             require_answers=False,
             auto_learn_profiles=False,
@@ -63,6 +74,11 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("--no-resume", command)
         self.assertIn("--no-headless", command)
         self.assertIn("--no-prompt-for-login-at-start", command)
+        self.assertIn("--no-auto-login", command)
+        self.assertIn("--auth-file", command)
+        self.assertIn("profiles/auth_hosts.yaml", command)
+        self.assertIn("--auto-login-timeout-seconds", command)
+        self.assertIn("40", command)
         self.assertIn("--no-selector-debug", command)
         self.assertIn("--allow-missing-answers", command)
         self.assertIn("--no-auto-learn-profiles", command)

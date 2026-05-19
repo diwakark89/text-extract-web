@@ -151,6 +151,23 @@ def main() -> None:
         value=False,
         help="Open page and wait for manual login before crawling starts.",
     )
+    enable_auto_login = st.sidebar.checkbox(
+        "Auto login from auth file",
+        value=False,
+        help="Use host-based credentials/selectors from a local auth YAML before manual prompt.",
+    )
+    auth_file_path = st.sidebar.text_input(
+        "Auth file",
+        value="profiles/auth_hosts.yaml",
+        help="Path to local host auth YAML (kept out of git).",
+    )
+    auto_login_timeout_seconds = st.sidebar.number_input(
+        "Auto login timeout (sec)",
+        min_value=5,
+        max_value=300,
+        value=40,
+        step=1,
+    )
     selector_debug = st.sidebar.checkbox("Selector debug", value=False)
     require_answers = st.sidebar.checkbox("Require answers", value=True)
     auto_learn_profiles = st.sidebar.checkbox("Auto learn profiles", value=True)
@@ -196,6 +213,9 @@ def main() -> None:
                     selector_debug=selector_debug,
                     model=model.strip() or "gpt-5",
                     prompt_for_login_at_start=prompt_for_login_at_start,
+                    enable_auto_login=enable_auto_login,
+                    auth_file_path=auth_file_path.strip() or "profiles/auth_hosts.yaml",
+                    auto_login_timeout_seconds=int(auto_login_timeout_seconds),
                 )
                 command = build_crawler_command(AUTOMATION_DIR, options)
                 ok, message = manager.start(command, cwd=AUTOMATION_DIR)
@@ -213,6 +233,8 @@ def main() -> None:
                         ),
                         "max_records": options.max_records,
                         "prompt_for_login_at_start": options.prompt_for_login_at_start,
+                        "enable_auto_login": options.enable_auto_login,
+                        "auth_file_path": options.auth_file_path,
                         "started_at": datetime.now(timezone.utc).isoformat(),
                         "command": shlex.join(command),
                         "stopped_at": "",
@@ -318,7 +340,7 @@ def main() -> None:
                 st.warning(message)
 
     quick_actions = [
-        (c_col, "Captcha Solved", "c"),
+        (c_col, "Continue", "c"),
         (o_col, "Override", "o"),
         (s_col, "Skip Next", "s"),
         (q_col, "Quit", "q"),

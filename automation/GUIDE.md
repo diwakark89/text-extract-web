@@ -116,6 +116,9 @@ Useful flags:
 - `--min-quality-score`: minimum score required to persist a record.
 - `--require-answers / --allow-missing-answers`: enforce answer presence.
 - `--prompt-for-login-at-start / --no-prompt-for-login-at-start`: pause before crawl so you can log in manually.
+- `--auto-login / --no-auto-login`: attempt host-based login from an auth file before manual prompt.
+- `--auth-file`: local YAML path with host credential/selectors (default `profiles/auth_hosts.yaml`).
+- `--auto-login-timeout-seconds`: timeout budget for auto-login steps.
 - `--max-consecutive-failures`: intervention threshold.
 - `--selector-debug`: write selector match details per extracted question.
 
@@ -221,3 +224,28 @@ Dashboard equivalent:
 - Answers missing: Add/adjust `show_answer_buttons` selectors. Lower `--min-quality-score` temporarily while tuning.
 
 - Repeated records: This is usually blocked by duplicate fingerprint checks; inspect `errors.jsonl` for duplicate entries.
+
+## 11) Optional host-based auto login
+
+Create a local file from `profiles/auth_hosts.example.yaml`:
+
+```bash
+cp profiles/auth_hosts.example.yaml profiles/auth_hosts.yaml
+```
+
+Populate real credentials/selectors in `profiles/auth_hosts.yaml` (this file is gitignored).
+
+Run with auto-login enabled:
+
+```bash
+mcq-crawler run \
+  --start-url "https://www.examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/" \
+  --profile profiles/examtopics_like.yaml \
+  --auto-login \
+  --auth-file profiles/auth_hosts.yaml
+```
+
+Behavior:
+
+- If login succeeds, crawling continues without manual input.
+- If login fails or captcha/manual step is required, runner falls back to the manual continue prompt.

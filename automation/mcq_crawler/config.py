@@ -55,13 +55,13 @@ DEFAULT_SELECTOR_PROFILE = SelectorProfile(
 class RunConfig(BaseModel):
     start_url: str
     profile_path: Path | None = None
-    domain_profiles_dir: Path = Path("automation/profiles/domains")
-    output_path: Path = Path("automation/output/records.jsonl")
-    error_path: Path = Path("automation/output/errors.jsonl")
-    debug_output_path: Path = Path("automation/output/selector_debug.jsonl")
-    checkpoint_path: Path = Path("automation/output/checkpoint.json")
-    screenshot_dir: Path = Path("automation/output/screenshots")
-    workspace_dir: Path = Path("automation")
+    domain_profiles_dir: Path = Path("profiles/domains")
+    output_path: Path = Path("output/records.jsonl")
+    error_path: Path = Path("output/errors.jsonl")
+    debug_output_path: Path = Path("output/selector_debug.jsonl")
+    checkpoint_path: Path = Path("output/checkpoint.json")
+    screenshot_dir: Path = Path("output/screenshots")
+    workspace_dir: Path = Path(".")
     model: str = "gpt-5"
     orchestration_mode: Literal["hybrid_gap_fill", "llm_orchestrator", "deterministic_only"] = "hybrid_gap_fill"
     max_records: int = 200
@@ -79,6 +79,9 @@ class RunConfig(BaseModel):
     headless: bool = False
     slow_mo_ms: int = 0
     prompt_for_login_at_start: bool = False
+    enable_auto_login: bool = False
+    auth_file_path: Path = Path("profiles/auth_hosts.yaml")
+    auto_login_timeout_seconds: int = 40
 
 
 def domain_from_url(url: str) -> str:

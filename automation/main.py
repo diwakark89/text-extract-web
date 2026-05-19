@@ -16,12 +16,12 @@ console = Console()
 def run(
     start_url: str = typer.Option(..., help="Start page URL"),
     profile: Path | None = typer.Option(None, help="Path to selectors profile YAML"),
-    domain_profiles_dir: Path = typer.Option(Path("automation/profiles/domains"), help="Per-domain learned profiles directory"),
-    output: Path = typer.Option(Path("automation/output/records.jsonl"), help="Output JSONL path"),
-    errors: Path = typer.Option(Path("automation/output/errors.jsonl"), help="Error JSONL path"),
-    debug_output: Path = typer.Option(Path("automation/output/selector_debug.jsonl"), help="Selector debug JSONL path"),
-    checkpoint: Path = typer.Option(Path("automation/output/checkpoint.json"), help="Checkpoint file path"),
-    screenshots: Path = typer.Option(Path("automation/output/screenshots"), help="Screenshot directory"),
+    domain_profiles_dir: Path = typer.Option(Path("profiles/domains"), help="Per-domain learned profiles directory"),
+    output: Path = typer.Option(Path("output/records.jsonl"), help="Output JSONL path"),
+    errors: Path = typer.Option(Path("output/errors.jsonl"), help="Error JSONL path"),
+    debug_output: Path = typer.Option(Path("output/selector_debug.jsonl"), help="Selector debug JSONL path"),
+    checkpoint: Path = typer.Option(Path("output/checkpoint.json"), help="Checkpoint file path"),
+    screenshots: Path = typer.Option(Path("output/screenshots"), help="Screenshot directory"),
     model: str = typer.Option("gpt-5", help="Copilot model name"),
     orchestration_mode: str = typer.Option(
         "hybrid_gap_fill",
@@ -44,6 +44,21 @@ def run(
         False,
         "--prompt-for-login-at-start/--no-prompt-for-login-at-start",
         help="Pause after opening URL so you can manually log in before crawling",
+    ),
+    enable_auto_login: bool = typer.Option(
+        False,
+        "--auto-login/--no-auto-login",
+        help="Attempt host-based auto-login from auth file before manual prompt",
+    ),
+    auth_file: Path = typer.Option(
+        Path("profiles/auth_hosts.yaml"),
+        "--auth-file",
+        help="Path to host credential and selector config YAML",
+    ),
+    auto_login_timeout_seconds: int = typer.Option(
+        40,
+        "--auto-login-timeout-seconds",
+        help="Timeout in seconds for auto-login steps",
     ),
 ) -> None:
     config = RunConfig(
@@ -70,6 +85,9 @@ def run(
         headless=headless,
         slow_mo_ms=slow_mo_ms,
         prompt_for_login_at_start=prompt_for_login_at_start,
+        enable_auto_login=enable_auto_login,
+        auth_file_path=auth_file,
+        auto_login_timeout_seconds=auto_login_timeout_seconds,
     )
 
     summary = asyncio.run(run_crawl(config))

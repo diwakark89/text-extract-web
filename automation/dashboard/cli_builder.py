@@ -22,6 +22,9 @@ class DashboardRunOptions:
     selector_debug: bool = False
     model: str = "gpt-5"
     prompt_for_login_at_start: bool = False
+    enable_auto_login: bool = False
+    auth_file_path: str = "profiles/auth_hosts.yaml"
+    auto_login_timeout_seconds: int = 40
 
 
 def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) -> list[str]:
@@ -52,6 +55,11 @@ def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) ->
             if options.prompt_for_login_at_start
             else "--no-prompt-for-login-at-start"
         ),
+        "--auto-login" if options.enable_auto_login else "--no-auto-login",
+        "--auth-file",
+        options.auth_file_path,
+        "--auto-login-timeout-seconds",
+        str(options.auto_login_timeout_seconds),
         "--require-answers" if options.require_answers else "--allow-missing-answers",
         "--auto-learn-profiles" if options.auto_learn_profiles else "--no-auto-learn-profiles",
         "--selector-debug" if options.selector_debug else "--no-selector-debug",

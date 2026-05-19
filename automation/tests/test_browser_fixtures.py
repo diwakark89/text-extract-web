@@ -99,6 +99,12 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(await self.runtime.has_next_page())
 
+    async def test_has_next_page_true_for_next_questions_view_link(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "next_questions_view_link.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.assertTrue(await self.runtime.has_next_page())
+
     async def test_click_next_prefers_page_navigation_over_next_question(self) -> None:
         fixture = (PROJECT_ROOT / "tests" / "fixtures" / "pagination_signals.html").resolve().as_uri()
         await self.runtime.open_url(fixture)

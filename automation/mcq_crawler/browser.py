@@ -267,7 +267,7 @@ async def _extract_page_candidates_impl(runtime: "BrowserRuntime", max_candidate
                         "containerSelectors": runtime._selector_chain("question_containers"),
                         "questionSelectors": runtime._selector_chain("question"),
                         "optionSelectors": runtime._selector_chain("options"),
-                        "answerSelectors": runtime._selector_chain("answer"),
+                    "answerSelectors": runtime._answer_selector_chain(),
                         "maxCandidates": max_candidates,
                 },
         )
@@ -430,6 +430,7 @@ class BrowserRuntime:
 
         seen_controls: set[str] = set()
         clicked_count = 0
+        reveal_targets: list[str] = []
 
         for selector in self._selector_chain("show_answer_buttons"):
             try:
@@ -508,6 +509,39 @@ class BrowserRuntime:
                         continue
                     seen_controls.add(control_key)
 
+                    target_selector = ""
+                    try:
+                        target_selector = (
+                            await handle.evaluate(
+                                """
+                                (el) => {
+                                  const rawTarget = String(
+                                    el.getAttribute("data-target") || el.getAttribute("aria-controls") || "",
+                                  ).trim();
+                                  if (rawTarget) {
+                                    return rawTarget.startsWith("#")
+                                      ? rawTarget
+                                      : `#${rawTarget.replace(/^#/, "")}`;
+                                  }
+
+                                  const href = String(el.getAttribute("href") || "").trim();
+                                  if (!href) {
+                                    return "";
+                                  }
+                                  if (href.startsWith("#")) {
+                                    return href;
+                                  }
+                                  const hashIndex = href.indexOf("#");
+                                  if (hashIndex >= 0) {
+                                    return href.slice(hashIndex);
+                                  }
+                                  return "";
+                                }
+                                """,
+                            )
+                        ).strip()
+                    except Exception:
+                        target_selector = ""
                     try:
                         should_click = await handle.evaluate(
                             """
@@ -599,11 +633,19 @@ class BrowserRuntime:
 
                     if clicked:
                         clicked_count += 1
+                        if target_selector and target_selector not in reveal_targets:
+                            reveal_targets.append(target_selector)
             except Exception:
                 continue
 
+        self.state.notes["last_reveal_clicked_count"] = clicked_count
+        self.state.notes["last_reveal_targets"] = reveal_targets
+
         if clicked_count > 0:
-            await self._wait_for_answer_reveal(timeout_ms=1800)
+            await self._wait_for_answer_reveal(
+                timeout_ms=2800,
+                target_selectors=reveal_targets,
+            )
 
         return clicked_count > 0
 
@@ -693,14 +735,16 @@ class BrowserRuntime:
                   const ariaLabel = String(node.getAttribute("aria-label") || "").trim().toLowerCase();
 
                   const pageSignal =
+                                        /\\/view\\/\\d+\\/?$/.test(href) ||
                     href.includes("/page-") ||
                     href.includes("page=") ||
                     text.includes("next page") ||
+                                        text.includes("next questions") ||
                     ariaLabel.includes("next page") ||
                     rel.includes("next");
 
                   const questionSignal =
-                    text.includes("next question") ||
+                                        /\\bnext question\\b/.test(text) ||
                     href.includes("collapse_") ||
                     href.includes("answerq");
 
@@ -758,15 +802,19 @@ class BrowserRuntime:
                 rel = ""
 
             score = 0
+            if re.search(r"/view/\d+/?$", href):
+                score += 10
             if "/page-" in href or "page=" in href:
                 score += 7
+            if "next questions" in text:
+                score += 6
             if "next page" in text:
                 score += 5
             if "next" in rel:
                 score += 4
             if text == "next" or text.startswith("next "):
                 score += 2
-            if "next question" in text:
+            if re.search(r"\bnext question\b", text):
                 score -= 6
             if "collapse_" in href or "answerq" in href:
                 score -= 6
@@ -795,7 +843,7 @@ class BrowserRuntime:
 
         question, _ = await self._first_text(self._selector_chain("question"))
         options, _ = await self._collect_options(self._selector_chain("options"))
-        answer, _ = await self._first_text(self._selector_chain("answer"))
+        answer, _ = await self._first_text(self._answer_selector_chain())
 
         material = "|".join([
             _clean_text(question),
@@ -819,9 +867,13 @@ class BrowserRuntime:
             await asyncio.sleep(0.2)
         return False
 
-    async def _wait_for_answer_reveal(self, timeout_ms: int = 1500) -> None:
+    async def _wait_for_answer_reveal(
+        self,
+        timeout_ms: int = 1500,
+        target_selectors: list[str] | None = None,
+    ) -> None:
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
-        answer_selectors = self._selector_chain("answer")
+        answer_selectors = self._answer_selector_chain(target_selectors=target_selectors)
 
         while asyncio.get_running_loop().time() < deadline:
             answer_text, _ = await self._first_text(answer_selectors)
@@ -838,7 +890,7 @@ class BrowserRuntime:
     async def extract_candidate(self) -> ExtractionCandidate:
         question_chain = self._selector_chain("question")
         options_chain = self._selector_chain("options")
-        answer_chain = self._selector_chain("answer")
+        answer_chain = self._answer_selector_chain()
 
         question, question_selector = await self._first_text(question_chain)
         options, options_selector = await self._collect_options(options_chain)
@@ -946,7 +998,7 @@ class BrowserRuntime:
               optionEls.push(...Array.from(document.querySelectorAll(".option, .ui-selectee")));
 
               const answerEls = Array.from(document.querySelectorAll("p, div, span"))
-                .filter((el) => /answer\(s\)|correct answer|answer\s*:/i.test((el.innerText || "").trim()))
+                                .filter((el) => /answer\\(s\\)|correct answer|answer\\s*:/i.test((el.innerText || "").trim()))
                 .slice(0, 12);
 
               return {
@@ -1016,6 +1068,43 @@ class BrowserRuntime:
                 continue
 
         return [], ""
+
+    def _recent_reveal_targets(self) -> list[str]:
+        stored = self.state.notes.get("last_reveal_targets")
+        if not isinstance(stored, list):
+            return []
+
+        targets: list[str] = []
+        for value in stored:
+            selector = str(value).strip()
+            if selector and selector not in targets:
+                targets.append(selector)
+        return targets
+
+    def _target_answer_chain(self, target_selectors: list[str]) -> list[str]:
+        chain: list[str] = []
+        for selector in target_selectors:
+            stripped = (selector or "").strip()
+            if not stripped:
+                continue
+
+            candidates = [
+                stripped,
+                f"{stripped} p.question-answer",
+                f"{stripped} .correct-answer-box",
+                f"{stripped} p",
+                f"{stripped} [class*='answer']",
+            ]
+            for candidate in candidates:
+                if candidate not in chain:
+                    chain.append(candidate)
+        return chain
+
+    def _answer_selector_chain(self, *, target_selectors: list[str] | None = None) -> list[str]:
+        if target_selectors is None:
+            target_selectors = self._recent_reveal_targets()
+        target_chain = self._target_answer_chain(target_selectors)
+        return self._merge_selector_chains(target_chain, self._selector_chain("answer"))
 
     def _selector_chain(self, key: str) -> list[str]:
         profile_values = list(getattr(self.selector_profile, key, []))
