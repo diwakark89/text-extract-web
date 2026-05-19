@@ -43,6 +43,10 @@ playwright install chromium
 mcq-crawler run --start-url "https://example.com/questions"
 ```
 
+Detailed step-by-step guide:
+
+- `automation/GUIDE.md`
+
 ## Tests
 
 Run automated tests (fixture extraction + parsing + checkpoint restore):
@@ -63,6 +67,13 @@ Useful options:
 - `--min-quality-score` enforce stronger persistence quality gate.
 - `--require-answers/--allow-missing-answers` answer consistency policy.
 - `--auto-learn-profiles` persist selector learning into domain profile files.
+- `--selector-debug` write per-question selector match logs.
+
+Ready profile for free-braindumps AWS CCP page:
+
+- `automation/profiles/free_braindumps_aws_ccp.yaml`
+- `automation/profiles/free_braindumps_aws_ccp_strict.yaml`
+- `automation/profiles/free_braindumps_aws_ccp_broad.yaml`
 
 ## Notes
 
@@ -71,3 +82,4 @@ Useful options:
 - On captcha/low confidence, the runner prompts for user guidance and resumes.
 - Domain profiles are saved under `automation/profiles/domains/`.
 - Checkpoint state is saved to `automation/output/checkpoint.json` by default.
+- Selector debug logs (when enabled) are saved to `automation/output/selector_debug.jsonl`.
