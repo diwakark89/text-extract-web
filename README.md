@@ -1,50 +1,28 @@
-# Text Extractor Chrome Extension
+# Text Extract Web
 
-This Chrome extension allows users to extract text from web pages using CSS selectors. It's a useful tool for quickly grabbing content from specific elements on web pages.
+This repository has two parts:
 
-## Features
+- `chrome_extension/`: Manifest V3 browser extension for selector-based MCQ extraction from the active tab.
+- `automation/`: Python + Playwright + Copilot SDK crawler for automated extraction, validation, and checkpoint-resume runs.
 
-- Extract text using custom CSS selectors
-- Save frequently used selectors for quick access
-- Copy extracted text to clipboard
-- Multiple selector support for complex extractions
+## Chrome Extension Setup
 
-## Installation
+1. Open Chrome and navigate to `chrome://extensions/`.
+2. Enable Developer mode.
+3. Click Load unpacked.
+4. Select `chrome_extension/`.
 
-1. Clone this repository or download the source code
-2. Open Chrome and navigate to `chrome://extensions/`
-3. Enable "Developer mode" in the top-right corner
-4. Click "Load unpacked" and select the directory containing the extension files
-5. The extension should now be installed and visible in your extensions list
+## Automation Output Location
 
-## Usage
+By default, crawler output is written under `automation/output/`:
 
-1. Navigate to any web page where you want to extract text
-2. Click the Text Extractor extension icon in your Chrome toolbar
-3. Enter one or more CSS selectors for the elements containing the text you want to extract
-4. Click "Extract Text" to see the content
-5. Use the "Copy Text" button to copy the extracted content to your clipboard
+- Records: `automation/output/records.jsonl`
+- Rejected/Error records: `automation/output/errors.jsonl`
+- Checkpoint: `automation/output/checkpoint.json`
+- Screenshots: `automation/output/screenshots/`
+- Selector debug (when enabled): `automation/output/selector_debug.jsonl`
 
-### Saving Selectors
-
-- Click the save icon (💾) next to any selector to save it for future use
-- Click "Manage Saved Selectors" to view, use, or delete your saved selectors
-
-## Development
-
-### Project Structure
-
-- `manifest.json` - Extension configuration
-- `popup.html` - UI for the extension popup
-- `popup.js` - Logic for the popup interface
-- `background.js` - Service worker for background processing
-- `icons/` - Extension icons
-
-### Technologies
-
-- JavaScript (ES6+)
-- Chrome Extension API
-- Chrome Storage API for saving user preferences
+These defaults are configurable through CLI flags in `automation/main.py`.
 
 ## License
 

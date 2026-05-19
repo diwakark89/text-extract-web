@@ -1,0 +1,24 @@
+question:
+  - "[role='tabpanel'] > div > p:first-of-type"
+  - ".tab-pane.active > div > p:first-of-type"
+  - "h4 + p"
+
+options:
+  - "[role='tabpanel'] > div > ul > li"
+  - "[role='tabpanel'] > div > ol > li"
+  - ".tab-pane.active > div > ul > li"
+  - ".tab-pane.active > div > ol > li"
+
+answer:
+  - "[role='tabpanel'] > div > p:has(strong)"
+  - "[role='tabpanel'] > div p:has-text('Answer(s):')"
+  - ".tab-pane.active p:has-text('Answer(s):')"
+
+show_answer_buttons:
+  - "[role='tabpanel'] button:has-text('Show Answer')"
+  - ".tab-pane.active button:has-text('Show Answer')"
+
+next_buttons:
+  - "[role='tabpanel'] button:has-text('Next Question')"
+  - ".tab-pane.active button:has-text('Next Question')"
+  - "a:has-text('Next Page')"

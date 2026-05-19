@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from mcq_crawler.checkpoint import CheckpointStore
+from mcq_crawler.models import RuntimeState
+
+
+class CheckpointResumeTests(unittest.TestCase):
+    def test_save_and_restore_runtime_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checkpoint_path = Path(temp_dir) / "checkpoint.json"
+            store = CheckpointStore(checkpoint_path)
+
+            state = RuntimeState(max_records=50, next_index=11)
+            state.records_written = 10
+            state.rejected_records = 3
+            state.duplicate_records = 2
+            state.consecutive_failures = 1
+            state.captcha_events = 4
+            state.user_interventions = 5
+            state.validation_failures = 6
+            state.current_fingerprint = "abc123"
+            state.domain = "example.com"
+            state.selector_overrides = {"question": [".lead"]}
+            state.seen_fingerprints = {"f1", "f2"}
+            state.selector_success_counts = {
+                "question": {"p.lead": 7},
+            }
+
+            store.save(state, "https://example.com/start")
+
+            restored = RuntimeState(max_records=50, next_index=1)
+            restored_url = store.restore_into(restored)
+
+            self.assertEqual(restored_url, "https://example.com/start")
+            self.assertEqual(restored.records_written, 10)
+            self.assertEqual(restored.rejected_records, 3)
+            self.assertEqual(restored.duplicate_records, 2)
+            self.assertEqual(restored.next_index, 11)
+            self.assertEqual(restored.consecutive_failures, 1)
+            self.assertEqual(restored.captcha_events, 4)
+            self.assertEqual(restored.user_interventions, 5)
+            self.assertEqual(restored.validation_failures, 6)
+            self.assertEqual(restored.current_fingerprint, "abc123")
+            self.assertEqual(restored.domain, "example.com")
+            self.assertEqual(restored.selector_overrides["question"], [".lead"])
+            self.assertIn("f1", restored.seen_fingerprints)
+            self.assertEqual(restored.selector_success_counts["question"]["p.lead"], 7)
+
+
+if __name__ == "__main__":
+    unittest.main()

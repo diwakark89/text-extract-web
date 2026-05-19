@@ -1,0 +1,15 @@
+question:
+  - "[role='tabpanel'] > div > p:first-of-type"
+
+options:
+  - "[role='tabpanel'] > div > ul > li"
+  - "[role='tabpanel'] > div > ol > li"
+
+answer:
+  - "[role='tabpanel'] > div p:has-text('Answer(s):')"
+
+show_answer_buttons:
+  - "[role='tabpanel'] button:has-text('Show Answer')"
+
+next_buttons:
+  - "[role='tabpanel'] button:has-text('Next Question')"

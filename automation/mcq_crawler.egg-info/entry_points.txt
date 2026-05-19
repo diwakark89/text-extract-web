@@ -1,0 +1,2 @@
+[console_scripts]
+mcq-crawler = main:app

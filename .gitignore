@@ -1,1 +1,6 @@
 .idea/copilot.data.migration.agent.xml
+automation/mcq_crawler/__pycache__/*
+automation/tests/__pycache__/test_browser_fixtures.cpython-313.pyc
+automation/tests/__pycache__/test_answer_parsing.cpython-313.pyc
+automation/tests/__pycache__/test_checkpoint_resume.cpython-313.pyc
+automation/tests/__pycache__/test_storage_debug.cpython-313.pyc

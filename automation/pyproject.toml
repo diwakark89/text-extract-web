@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcq-crawler"
+version = "0.1.0"
+description = "Copilot SDK + Playwright MCQ crawler"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "copilot-sdk>=0.1.0",
+  "playwright>=1.54.0",
+  "pydantic>=2.9.0",
+  "typer>=0.12.0",
+  "rich>=13.7.0",
+  "tenacity>=9.0.0",
+  "PyYAML>=6.0.2",
+]
+
+[project.scripts]
+mcq-crawler = "main:app"
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+include = ["mcq_crawler*"]

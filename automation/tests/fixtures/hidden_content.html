@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hidden Answer Fixture</title>
+    <style>
+      .hidden-answer {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel-body">
+      <p class="lead">What is the capital of France?</p>
+      <ol class="ui-selectable" type="A">
+        <li class="ui-selectee">Paris</li>
+        <li class="ui-selectee">Berlin</li>
+        <li class="ui-selectee">Madrid</li>
+      </ol>
+
+      <button class="show-answer" id="show-answer-btn" type="button"
+        >Show Answer</button
+      >
+      <div id="answerQ1" class="hidden-answer">
+        <p><strong>Answer(s):</strong> A</p>
+      </div>
+    </div>
+
+    <script>
+      document
+        .getElementById("show-answer-btn")
+        .addEventListener("click", function () {
+          const answer = document.getElementById("answerQ1");
+          answer.style.display = "block";
+        });
+    </script>
+  </body>
+</html>
