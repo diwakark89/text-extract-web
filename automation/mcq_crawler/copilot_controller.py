@@ -191,6 +191,58 @@ class CopilotToolbox:
             ),
         ]
 
+    def build_gap_fill_tools(self) -> list[Tool]:
+        return [
+            Tool(
+                name="get_page_context",
+                description="Read current URL, title, text preview and fingerprint",
+                parameters={"type": "object", "properties": {}},
+                handler=self._get_page_context,
+            ),
+            Tool(
+                name="reveal_answer",
+                description="Click likely show-answer controls on the current page",
+                parameters={"type": "object", "properties": {}},
+                handler=self._reveal_answer,
+            ),
+            Tool(
+                name="extract_current_mcq",
+                description="Extract question, options, answer and confidence from the page",
+                parameters={"type": "object", "properties": {}},
+                handler=self._extract_current_mcq,
+            ),
+            Tool(
+                name="discover_selectors",
+                description="Discover potential question/options/answer selectors from the current page",
+                parameters=DiscoverSelectorsArgs.model_json_schema(),
+                handler=self._discover_selectors,
+            ),
+            Tool(
+                name="update_selector_overrides",
+                description="Update runtime selector overrides for extraction/navigation",
+                parameters=SelectorOverridesArgs.model_json_schema(),
+                handler=self._update_selector_overrides,
+            ),
+            Tool(
+                name="persist_selector_learning",
+                description="Persist explicit selector learning into domain profile",
+                parameters=PersistSelectorsArgs.model_json_schema(),
+                handler=self._persist_selector_learning,
+            ),
+            Tool(
+                name="save_current_record",
+                description="Validate and persist the extracted MCQ into JSONL",
+                parameters=SaveRecordArgs.model_json_schema(),
+                handler=self._save_current_record,
+            ),
+            Tool(
+                name="take_screenshot",
+                description="Capture current page screenshot for debugging/review",
+                parameters=ScreenshotArgs.model_json_schema(),
+                handler=self._take_screenshot,
+            ),
+        ]
+
     def _load_page_candidate_queue(self, current_url: str) -> list[ExtractionCandidate]:
         source_url = self.state.notes.get(PAGE_CANDIDATE_SOURCE_URL_KEY, "")
         if source_url != current_url:
@@ -225,12 +277,14 @@ class CopilotToolbox:
             self.state.last_page_candidates_found = self.state.current_page_candidates_found
             self.state.last_page_saved = self.state.current_page_saved
             self.state.last_page_skipped = self.state.current_page_skipped
+            self.state.last_page_llm_assists = self.state.current_page_llm_assists
             self.state.pages_processed += 1
 
         self.state.current_page_url = current_url
         self.state.current_page_candidates_found = 0
         self.state.current_page_saved = 0
         self.state.current_page_skipped = 0
+        self.state.current_page_llm_assists = 0
 
     def _save_candidate_record(
         self,

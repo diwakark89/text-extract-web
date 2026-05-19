@@ -144,6 +144,12 @@ def main() -> None:
     min_confidence = st.sidebar.number_input("Min confidence", min_value=0.0, max_value=1.0, value=0.65, step=0.01)
     min_quality_score = st.sidebar.number_input("Min quality score", min_value=0.0, max_value=1.0, value=0.72, step=0.01)
     model = st.sidebar.text_input("Model", value=DEFAULT_DASHBOARD_MODEL)
+    orchestration_mode = st.sidebar.selectbox(
+        "Orchestration mode",
+        options=["hybrid_gap_fill", "deterministic_only", "llm_orchestrator"],
+        index=0,
+        help="hybrid_gap_fill uses deterministic crawling and invokes Copilot only on extraction gaps.",
+    )
     st.sidebar.caption(
         "Use a model available in your Copilot account (default: gpt-5.4)."
     )
@@ -160,6 +166,7 @@ def main() -> None:
                 options = DashboardRunOptions(
                     start_url=start_url.strip(),
                     profile_path=profile_path,
+                    orchestration_mode=orchestration_mode,
                     resume=resume,
                     headless=headless,
                     max_records=int(max_records),
@@ -235,6 +242,15 @@ def main() -> None:
     last_page_candidates_found = _as_int(checkpoint.get("last_page_candidates_found")) if isinstance(checkpoint, dict) else None
     last_page_saved = _as_int(checkpoint.get("last_page_saved")) if isinstance(checkpoint, dict) else None
     last_page_skipped = _as_int(checkpoint.get("last_page_skipped")) if isinstance(checkpoint, dict) else None
+    current_page_llm_assists = _as_int(checkpoint.get("current_page_llm_assists")) if isinstance(checkpoint, dict) else None
+    last_page_llm_assists = _as_int(checkpoint.get("last_page_llm_assists")) if isinstance(checkpoint, dict) else None
+    llm_assist_attempts_total = _as_int(checkpoint.get("llm_assist_attempts_total")) if isinstance(checkpoint, dict) else None
+    llm_assist_saved_count = _as_int(checkpoint.get("llm_assist_saved_count")) if isinstance(checkpoint, dict) else None
+    llm_assist_last_trigger_reason = (
+        str(checkpoint.get("llm_assist_last_trigger_reason") or "").strip()
+        if isinstance(checkpoint, dict)
+        else ""
+    )
     pages_processed = _as_int(checkpoint.get("pages_processed")) if isinstance(checkpoint, dict) else None
 
     summary = st.session_state.get("last_run_summary")
@@ -312,6 +328,17 @@ def main() -> None:
         ),
     )
 
+    st.caption("LLM assist counters")
+    ac1, ac2, ac3, ac4 = st.columns(4)
+    ac1.metric("Assist attempts (total)", str(llm_assist_attempts_total or 0))
+    ac2.metric("Assist saves (total)", str(llm_assist_saved_count or 0))
+    ac3.metric("Current page assists", str(current_page_llm_assists or 0))
+    ac4.metric("Last page assists", str(last_page_llm_assists or 0))
+    st.caption(
+        "Last assist trigger reason: "
+        + (llm_assist_last_trigger_reason if llm_assist_last_trigger_reason else "-")
+    )
+
     recent_logs = manager.get_logs(limit=120)
     model_error = None
     for event in recent_logs:
@@ -334,8 +361,16 @@ def main() -> None:
         c1.metric("Status", status)
         c2.metric("Started", summary.get("started_at", ""))
         c3.metric("Stopped", summary.get("stopped_at", "-") or "-")
+        s1, s2, s3 = st.columns(3)
+        s1.metric("Assist attempts", str(llm_assist_attempts_total or 0))
+        s2.metric("Assist saves", str(llm_assist_saved_count or 0))
+        s3.metric("Current page assists", str(current_page_llm_assists or 0))
         st.write(f"URL: {summary.get('url', '')}")
         st.write(f"Profile: {summary.get('profile', '')}")
+        st.write(
+            "Last assist trigger reason: "
+            + (llm_assist_last_trigger_reason if llm_assist_last_trigger_reason else "-")
+        )
         st.caption("Command")
         st.code(summary.get("command", ""), language="bash")
 

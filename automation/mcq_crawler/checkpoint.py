@@ -51,10 +51,15 @@ class CheckpointStore:
             "current_page_candidates_found": state.current_page_candidates_found,
             "current_page_saved": state.current_page_saved,
             "current_page_skipped": state.current_page_skipped,
+            "current_page_llm_assists": state.current_page_llm_assists,
             "last_page_candidates_found": state.last_page_candidates_found,
             "last_page_saved": state.last_page_saved,
             "last_page_skipped": state.last_page_skipped,
+            "last_page_llm_assists": state.last_page_llm_assists,
             "pages_processed": state.pages_processed,
+            "llm_assist_attempts_total": state.llm_assist_attempts_total,
+            "llm_assist_saved_count": state.llm_assist_saved_count,
+            "llm_assist_last_trigger_reason": state.llm_assist_last_trigger_reason,
         }
         self.checkpoint_path.write_text(
             json.dumps(payload, ensure_ascii=True, indent=2),
@@ -96,6 +101,9 @@ class CheckpointStore:
         state.current_page_skipped = int(
             snapshot.get("current_page_skipped", state.current_page_skipped),
         )
+        state.current_page_llm_assists = int(
+            snapshot.get("current_page_llm_assists", state.current_page_llm_assists),
+        )
         state.last_page_candidates_found = int(
             snapshot.get("last_page_candidates_found", state.last_page_candidates_found),
         )
@@ -105,7 +113,19 @@ class CheckpointStore:
         state.last_page_skipped = int(
             snapshot.get("last_page_skipped", state.last_page_skipped),
         )
+        state.last_page_llm_assists = int(
+            snapshot.get("last_page_llm_assists", state.last_page_llm_assists),
+        )
         state.pages_processed = int(snapshot.get("pages_processed", state.pages_processed))
+        state.llm_assist_attempts_total = int(
+            snapshot.get("llm_assist_attempts_total", state.llm_assist_attempts_total),
+        )
+        state.llm_assist_saved_count = int(
+            snapshot.get("llm_assist_saved_count", state.llm_assist_saved_count),
+        )
+        llm_assist_last_trigger_reason = snapshot.get("llm_assist_last_trigger_reason")
+        if isinstance(llm_assist_last_trigger_reason, str):
+            state.llm_assist_last_trigger_reason = llm_assist_last_trigger_reason
 
         selector_overrides = snapshot.get("selector_overrides")
         if isinstance(selector_overrides, dict):

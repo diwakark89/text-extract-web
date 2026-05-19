@@ -9,6 +9,7 @@ import sys
 class DashboardRunOptions:
     start_url: str
     profile_path: str | None = None
+    orchestration_mode: str = "hybrid_gap_fill"
     resume: bool = False
     headless: bool = False
     max_records: int = 200
@@ -31,6 +32,8 @@ def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) ->
         options.start_url,
         "--model",
         options.model,
+        "--orchestration-mode",
+        options.orchestration_mode,
         "--max-records",
         str(options.max_records),
         "--max-turns",

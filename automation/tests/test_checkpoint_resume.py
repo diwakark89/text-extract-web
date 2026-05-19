@@ -37,10 +37,15 @@ class CheckpointResumeTests(unittest.TestCase):
             state.current_page_candidates_found = 5
             state.current_page_saved = 4
             state.current_page_skipped = 1
+            state.current_page_llm_assists = 1
             state.last_page_candidates_found = 5
             state.last_page_saved = 5
             state.last_page_skipped = 0
+            state.last_page_llm_assists = 2
             state.pages_processed = 3
+            state.llm_assist_attempts_total = 7
+            state.llm_assist_saved_count = 3
+            state.llm_assist_last_trigger_reason = "low_confidence"
             state.selector_overrides = {"question": [".lead"]}
             state.seen_fingerprints = {"f1", "f2"}
             state.selector_success_counts = {
@@ -71,10 +76,15 @@ class CheckpointResumeTests(unittest.TestCase):
             self.assertEqual(restored.current_page_candidates_found, 5)
             self.assertEqual(restored.current_page_saved, 4)
             self.assertEqual(restored.current_page_skipped, 1)
+            self.assertEqual(restored.current_page_llm_assists, 1)
             self.assertEqual(restored.last_page_candidates_found, 5)
             self.assertEqual(restored.last_page_saved, 5)
             self.assertEqual(restored.last_page_skipped, 0)
+            self.assertEqual(restored.last_page_llm_assists, 2)
             self.assertEqual(restored.pages_processed, 3)
+            self.assertEqual(restored.llm_assist_attempts_total, 7)
+            self.assertEqual(restored.llm_assist_saved_count, 3)
+            self.assertEqual(restored.llm_assist_last_trigger_reason, "low_confidence")
             self.assertEqual(restored.selector_overrides["question"], [".lead"])
             self.assertIn("f1", restored.seen_fingerprints)
             self.assertEqual(restored.selector_success_counts["question"]["p.lead"], 7)

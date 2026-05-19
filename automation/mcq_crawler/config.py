@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 import yaml
@@ -62,6 +63,7 @@ class RunConfig(BaseModel):
     screenshot_dir: Path = Path("automation/output/screenshots")
     workspace_dir: Path = Path("automation")
     model: str = "gpt-5"
+    orchestration_mode: Literal["hybrid_gap_fill", "llm_orchestrator", "deterministic_only"] = "hybrid_gap_fill"
     max_records: int = 200
     max_turns: int = 800
     start_index: int = 1
@@ -71,6 +73,8 @@ class RunConfig(BaseModel):
     resume: bool = False
     auto_learn_profiles: bool = True
     max_consecutive_failures: int = 3
+    navigation_retry_limit: int = 2
+    max_llm_assists_per_page: int = 1
     selector_debug: bool = False
     headless: bool = False
     slow_mo_ms: int = 0

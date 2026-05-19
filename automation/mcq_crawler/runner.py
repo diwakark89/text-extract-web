@@ -8,11 +8,11 @@ from typing import Any
 
 from rich.console import Console
 
-from .browser import BrowserRuntime
+from .browser import BrowserRuntime, options_to_map, parse_answer_letters
 from .checkpoint import CheckpointStore
 from .config import RunConfig, domain_from_url, load_selector_profile
 from .copilot_controller import CopilotToolbox
-from .models import RunSummary, RuntimeState
+from .models import ExtractionCandidate, RunSummary, RuntimeState
 from .profile_store import SelectorProfileStore
 from .storage import JsonlStore
 
@@ -136,85 +136,22 @@ class CrawlRunner:
                 else None,
             )
 
-            client_config = SubprocessConfig(
-                cwd=str(self.config.workspace_dir),
-                use_logged_in_user=True,
-            )
-
-            async with CopilotClient(client_config) as client:
-                async with await client.create_session(
-                    model=self.config.model,
-                    on_permission_request=PermissionHandler.approve_all,
-                    on_user_input_request=self._on_user_input_request,
-                    tools=toolbox.build_tools(),
-                    streaming=False,
-                    infinite_sessions={"enabled": True},
-                ) as session:
-                    waiter = SessionWaiter(self.console)
-                    session.on(waiter.on_event)
-
-                    try:
-                        await self._send_and_wait(
-                            session,
-                            waiter,
-                            SYSTEM_PROMPT,
-                            timeout_seconds=INITIAL_WAIT_TIMEOUT_SECONDS,
-                        )
-                    except TimeoutError:
-                        state.last_warning = "initial_controller_timeout"
-                        self.console.print(
-                            "[yellow]Initial controller wait timed out; continuing with turn loop.[/yellow]",
-                        )
-
-                    stale_turns = 0
-                    previous_written = state.records_written
-
-                    for turn in range(1, self.config.max_turns + 1):
-                        if state.stop_reason:
-                            break
-                        if state.records_written >= state.max_records:
-                            state.stop_reason = "max_records_reached"
-                            break
-
-                        if state.captcha_detected or state.consecutive_failures >= self.config.max_consecutive_failures:
-                            await self._manual_intervention(browser, state, profile_store)
-                            if state.stop_reason:
-                                break
-
-                        prompt = self._build_turn_prompt(turn, state)
-                        try:
-                            await self._send_and_wait(
-                                session,
-                                waiter,
-                                prompt,
-                                timeout_seconds=TURN_WAIT_TIMEOUT_SECONDS,
-                            )
-                        except TimeoutError:
-                            state.consecutive_failures += 1
-                            state.last_warning = "controller_timeout"
-                            await self._manual_intervention(browser, state, profile_store)
-                            if state.stop_reason:
-                                break
-
-                        if state.records_written == previous_written:
-                            stale_turns += 1
-                        else:
-                            stale_turns = 0
-                            previous_written = state.records_written
-
-                        if stale_turns >= 4:
-                            self.console.print(
-                                "[yellow]No extraction progress after 4 turns. Requesting feedback.[/yellow]",
-                            )
-                            await self._manual_intervention(browser, state, profile_store)
-                            stale_turns = 0
-
-                        await self._save_checkpoint(browser, state, checkpoint_store)
-
-                    if not state.stop_reason:
-                        state.stop_reason = "turn_limit_reached"
-
-                    await self._save_checkpoint(browser, state, checkpoint_store)
+            if self.config.orchestration_mode == "llm_orchestrator":
+                await self._run_llm_orchestrated_loop(
+                    browser=browser,
+                    state=state,
+                    profile_store=profile_store,
+                    checkpoint_store=checkpoint_store,
+                    toolbox=toolbox,
+                )
+            else:
+                await self._run_deterministic_loop(
+                    browser=browser,
+                    state=state,
+                    profile_store=profile_store,
+                    checkpoint_store=checkpoint_store,
+                    toolbox=toolbox,
+                )
 
         summary = RunSummary(
             start_url=target_url,
@@ -226,6 +163,320 @@ class CrawlRunner:
             stop_reason=state.stop_reason,
         )
         return summary
+
+    async def _run_llm_orchestrated_loop(
+        self,
+        *,
+        browser: BrowserRuntime,
+        state: RuntimeState,
+        profile_store: SelectorProfileStore,
+        checkpoint_store: CheckpointStore,
+        toolbox: CopilotToolbox,
+    ) -> None:
+        client_config = SubprocessConfig(
+            cwd=str(self.config.workspace_dir),
+            use_logged_in_user=True,
+        )
+
+        async with CopilotClient(client_config) as client:
+            async with await client.create_session(
+                model=self.config.model,
+                on_permission_request=PermissionHandler.approve_all,
+                on_user_input_request=self._on_user_input_request,
+                tools=toolbox.build_tools(),
+                streaming=False,
+                infinite_sessions={"enabled": True},
+            ) as session:
+                waiter = SessionWaiter(self.console)
+                session.on(waiter.on_event)
+
+                try:
+                    await self._send_and_wait(
+                        session,
+                        waiter,
+                        SYSTEM_PROMPT,
+                        timeout_seconds=INITIAL_WAIT_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    state.last_warning = "initial_controller_timeout"
+                    self.console.print(
+                        "[yellow]Initial controller wait timed out; continuing with turn loop.[/yellow]",
+                    )
+
+                stale_turns = 0
+                previous_written = state.records_written
+
+                for turn in range(1, self.config.max_turns + 1):
+                    if state.stop_reason:
+                        break
+                    if state.records_written >= state.max_records:
+                        state.stop_reason = "max_records_reached"
+                        break
+
+                    if state.captcha_detected or state.consecutive_failures >= self.config.max_consecutive_failures:
+                        await self._manual_intervention(browser, state, profile_store)
+                        if state.stop_reason:
+                            break
+
+                    prompt = self._build_turn_prompt(turn, state)
+                    try:
+                        await self._send_and_wait(
+                            session,
+                            waiter,
+                            prompt,
+                            timeout_seconds=TURN_WAIT_TIMEOUT_SECONDS,
+                        )
+                    except TimeoutError:
+                        state.consecutive_failures += 1
+                        state.last_warning = "controller_timeout"
+                        await self._manual_intervention(browser, state, profile_store)
+                        if state.stop_reason:
+                            break
+
+                    if state.records_written == previous_written:
+                        stale_turns += 1
+                    else:
+                        stale_turns = 0
+                        previous_written = state.records_written
+
+                    if stale_turns >= 4:
+                        self.console.print(
+                            "[yellow]No extraction progress after 4 turns. Requesting feedback.[/yellow]",
+                        )
+                        await self._manual_intervention(browser, state, profile_store)
+                        stale_turns = 0
+
+                    await self._save_checkpoint(browser, state, checkpoint_store)
+
+                if not state.stop_reason:
+                    state.stop_reason = "turn_limit_reached"
+
+                await self._save_checkpoint(browser, state, checkpoint_store)
+
+    async def _run_deterministic_loop(
+        self,
+        *,
+        browser: BrowserRuntime,
+        state: RuntimeState,
+        profile_store: SelectorProfileStore,
+        checkpoint_store: CheckpointStore,
+        toolbox: CopilotToolbox,
+    ) -> None:
+        stale_turns = 0
+        previous_written = state.records_written
+
+        for turn in range(1, self.config.max_turns + 1):
+            if state.stop_reason:
+                break
+            if state.records_written >= state.max_records:
+                state.stop_reason = "max_records_reached"
+                break
+
+            detected = await browser.detect_captcha()
+            if detected:
+                state.captcha_detected = True
+                state.captcha_events += 1
+
+            if state.captcha_detected or state.consecutive_failures >= self.config.max_consecutive_failures:
+                await self._manual_intervention(browser, state, profile_store)
+                if state.stop_reason:
+                    break
+
+            await browser.reveal_answer()
+
+            current_url = browser.page.url if browser.page else state.current_url
+            toolbox._start_page_tracking(current_url)
+
+            candidates = await browser.extract_page_candidates()
+            if not candidates:
+                single_candidate = await browser.extract_candidate()
+                if single_candidate.question:
+                    candidates = [single_candidate]
+
+            state.current_page_candidates_found = max(
+                state.current_page_candidates_found,
+                len(candidates),
+            )
+
+            for candidate in candidates:
+                if state.stop_reason:
+                    break
+                if state.records_written >= state.max_records:
+                    state.stop_reason = "max_records_reached"
+                    break
+
+                await self._attempt_save_candidate(toolbox, candidate)
+
+            if state.records_written == previous_written:
+                stale_turns += 1
+            else:
+                stale_turns = 0
+                previous_written = state.records_written
+
+            if stale_turns >= 4:
+                self.console.print(
+                    "[yellow]No extraction progress after 4 deterministic turns. Requesting feedback.[/yellow]",
+                )
+                await self._manual_intervention(browser, state, profile_store)
+                stale_turns = 0
+
+            await self._save_checkpoint(browser, state, checkpoint_store)
+
+            if state.stop_reason:
+                break
+            if state.records_written >= state.max_records:
+                state.stop_reason = "max_records_reached"
+                break
+
+            has_next = await browser.has_next_page()
+            if not has_next:
+                state.stop_reason = "verified_no_next_page"
+                break
+
+            prev_fingerprint = ""
+            try:
+                prev_fingerprint = await browser.current_fingerprint()
+            except Exception:
+                prev_fingerprint = ""
+
+            moved = False
+            for _ in range(max(1, self.config.navigation_retry_limit)):
+                clicked = await browser.click_next()
+                if not clicked:
+                    continue
+                if not prev_fingerprint:
+                    moved = True
+                    break
+                changed = await browser.wait_for_fingerprint_change(
+                    previous_fingerprint=prev_fingerprint,
+                    timeout_ms=7000,
+                )
+                if changed:
+                    moved = True
+                    break
+
+            if not moved:
+                state.consecutive_failures += 1
+                state.last_warning = "navigation_no_change"
+            else:
+                state.consecutive_failures = 0
+                state.page_started_at_epoch = time.time()
+
+        if not state.stop_reason:
+            state.stop_reason = "turn_limit_reached"
+
+        await self._save_checkpoint(browser, state, checkpoint_store)
+
+    async def _attempt_save_candidate(self, toolbox: CopilotToolbox, candidate: ExtractionCandidate) -> None:
+        options = options_to_map(candidate.option_texts)
+        answers = parse_answer_letters(candidate.answer_text)
+        state = toolbox.state
+        state.last_candidate = candidate
+
+        saved, _, _ = toolbox._save_candidate_record(
+            question=candidate.question,
+            options=options,
+            answers=answers,
+            confidence_value=float(candidate.confidence or 0.0),
+            used_selectors=candidate.used_selectors,
+        )
+        if saved:
+            return
+
+        if self.config.orchestration_mode != "hybrid_gap_fill":
+            return
+
+        assist_reason = self._assist_trigger_reason(candidate, state)
+        if not assist_reason:
+            return
+
+        page_assist_key = f"assist_attempts::{state.current_page_url or state.current_url}"
+        current_attempts = int(state.notes.get(page_assist_key, 0))
+        if current_attempts >= self.config.max_llm_assists_per_page:
+            return
+
+        state.notes[page_assist_key] = current_attempts + 1
+        state.llm_assist_attempts_total += 1
+        state.current_page_llm_assists += 1
+        state.llm_assist_last_trigger_reason = assist_reason
+
+        assisted = await self._run_gap_fill_assist(toolbox, state)
+        if not assisted:
+            return
+
+        retried = await toolbox.browser.extract_candidate()
+        retry_saved, _, _ = toolbox._save_candidate_record(
+            question=retried.question,
+            options=options_to_map(retried.option_texts),
+            answers=parse_answer_letters(retried.answer_text),
+            confidence_value=float(retried.confidence or 0.0),
+            used_selectors=retried.used_selectors,
+        )
+        if retry_saved:
+            state.llm_assist_saved_count += 1
+
+    def _assist_trigger_reason(self, candidate: ExtractionCandidate, state: RuntimeState) -> str:
+        if candidate.confidence < self.config.min_confidence:
+            return "low_confidence"
+
+        candidate_warnings = set(candidate.warnings)
+        if "question_missing" in candidate_warnings or "insufficient_options" in candidate_warnings:
+            return "missing_core_fields"
+
+        if state.last_warning.startswith("ignored_stop_request"):
+            return ""
+
+        return ""
+
+    async def _run_gap_fill_assist(self, toolbox: CopilotToolbox, state: RuntimeState) -> bool:
+        client_config = SubprocessConfig(
+            cwd=str(self.config.workspace_dir),
+            use_logged_in_user=True,
+        )
+
+        try:
+            async with CopilotClient(client_config) as client:
+                async with await client.create_session(
+                    model=self.config.model,
+                    on_permission_request=PermissionHandler.approve_all,
+                    on_user_input_request=self._on_user_input_request,
+                    tools=toolbox.build_gap_fill_tools(),
+                    streaming=False,
+                    infinite_sessions={"enabled": True},
+                ) as session:
+                    waiter = SessionWaiter(self.console)
+                    session.on(waiter.on_event)
+                    await self._send_and_wait(
+                        session,
+                        waiter,
+                        self._build_gap_fill_prompt(state),
+                        timeout_seconds=90,
+                    )
+                    return True
+        except TimeoutError:
+            state.last_warning = "gap_fill_timeout"
+            return False
+        except Exception:
+            state.last_warning = "gap_fill_error"
+            return False
+
+    def _build_gap_fill_prompt(self, state: RuntimeState) -> str:
+        snapshot = {
+            "current_page_url": state.current_page_url,
+            "records_written": state.records_written,
+            "consecutive_failures": state.consecutive_failures,
+            "last_warning": state.last_warning,
+            "selector_overrides": state.selector_overrides,
+        }
+
+        return (
+            "You are in gap-fill mode for the current page only. "
+            "Do not navigate pages and do not attempt to stop the run. "
+            "Try to recover extraction quality by discovering/selecting better selectors, "
+            "then extract and save one valid record if possible. "
+            "Use only the provided tools.\n\n"
+            f"State:\n{json.dumps(snapshot, ensure_ascii=True)}"
+        )
 
     async def _send_and_wait(
         self,

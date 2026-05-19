@@ -26,7 +26,7 @@ class JsonlStore:
             self.debug_path.parent.mkdir(parents=True, exist_ok=True)
 
     def append_record(self, record: MCQRecord) -> None:
-        payload = record.model_dump()
+        payload = record.model_dump(exclude={"source_url", "confidence", "quality_score", "fingerprint", "extracted_at"})
         line = json.dumps(payload, ensure_ascii=True)
         with self.output_path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
