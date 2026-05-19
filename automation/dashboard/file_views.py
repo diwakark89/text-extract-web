@@ -3,8 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 RECENT_URLS_FILE = "dashboard_recent_urls.json"
+RECENT_STORE_SCHEMA_VERSION = 1
+RECENT_SITES_KEY = "recent_sites"
+PROFILE_BY_HOST_KEY = "profile_by_host"
 
 
 def _is_within_workspace(path: Path, workspace_root: Path) -> bool:
@@ -74,21 +78,121 @@ def read_checkpoint(file_path: Path) -> dict[str, Any]:
     return loaded
 
 
-def load_recent_urls(output_dir: Path, *, max_items: int = 20) -> list[str]:
+def _normalize_host(host: str) -> str:
+    normalized = (host or "").strip().lower()
+    if not normalized:
+        return ""
+    normalized = normalized.split("@")[-1]
+    normalized = normalized.split(":", 1)[0]
+    if normalized.startswith("www."):
+        normalized = normalized[4:]
+    return normalized
+
+
+def url_host_key(url: str) -> str:
+    stripped = (url or "").strip()
+    if not stripped:
+        return ""
+
+    parsed = urlparse(stripped)
+    if not parsed.netloc and parsed.path and "://" not in stripped:
+        parsed = urlparse(f"https://{stripped}")
+
+    if parsed.hostname:
+        return _normalize_host(parsed.hostname)
+
+    return ""
+
+
+def _empty_recent_store() -> dict[str, Any]:
+    return {
+        "schema_version": RECENT_STORE_SCHEMA_VERSION,
+        RECENT_SITES_KEY: [],
+        PROFILE_BY_HOST_KEY: {},
+    }
+
+
+def _normalize_recent_store(raw: object, *, max_items: int) -> dict[str, Any]:
+    store = _empty_recent_store()
+
+    if isinstance(raw, list):
+        seen_hosts: set[str] = set()
+        for item in raw:
+            url = str(item).strip()
+            host = url_host_key(url)
+            if not url or not host or host in seen_hosts:
+                continue
+            seen_hosts.add(host)
+            store[RECENT_SITES_KEY].append({"host": host, "last_url": url})
+
+        store[RECENT_SITES_KEY] = store[RECENT_SITES_KEY][:max_items]
+        return store
+
+    if not isinstance(raw, dict):
+        return store
+
+    recent_items = raw.get(RECENT_SITES_KEY)
+    if isinstance(recent_items, list):
+        seen_hosts: set[str] = set()
+        for item in recent_items:
+            if not isinstance(item, dict):
+                continue
+            url = str(item.get("last_url") or "").strip()
+            host = _normalize_host(str(item.get("host") or ""))
+            if not host:
+                host = url_host_key(url)
+            if not url or not host or host in seen_hosts:
+                continue
+            seen_hosts.add(host)
+            store[RECENT_SITES_KEY].append({"host": host, "last_url": url})
+
+    profile_map = raw.get(PROFILE_BY_HOST_KEY)
+    if isinstance(profile_map, dict):
+        cleaned: dict[str, str] = {}
+        for host, profile_path in profile_map.items():
+            host_key = _normalize_host(str(host))
+            profile_value = str(profile_path or "").strip()
+            if host_key and profile_value:
+                cleaned[host_key] = profile_value
+        store[PROFILE_BY_HOST_KEY] = cleaned
+
+    store[RECENT_SITES_KEY] = store[RECENT_SITES_KEY][:max_items]
+    return store
+
+
+def _load_recent_store(output_dir: Path, *, max_items: int = 20) -> dict[str, Any]:
     file_path = output_dir / RECENT_URLS_FILE
     if not file_path.exists():
-        return []
+        return _empty_recent_store()
 
     try:
         loaded = json.loads(file_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
-        return []
+        return _empty_recent_store()
 
-    if not isinstance(loaded, list):
-        return []
+    return _normalize_recent_store(loaded, max_items=max_items)
 
-    urls = [str(item).strip() for item in loaded if str(item).strip()]
-    return urls[:max_items]
+
+def _write_recent_store(output_dir: Path, store: dict[str, Any], *, max_items: int = 20) -> None:
+    normalized = _normalize_recent_store(store, max_items=max_items)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    file_path = output_dir / RECENT_URLS_FILE
+    file_path.write_text(
+        json.dumps(normalized, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def load_recent_urls(output_dir: Path, *, max_items: int = 20) -> list[str]:
+    store = _load_recent_store(output_dir, max_items=max_items)
+    recent_sites = store.get(RECENT_SITES_KEY, [])
+    if not isinstance(recent_sites, list):
+        return []
+    return [
+        str(item.get("last_url") or "").strip()
+        for item in recent_sites
+        if isinstance(item, dict) and str(item.get("last_url") or "").strip()
+    ][:max_items]
 
 
 def save_recent_url(output_dir: Path, url: str, *, max_items: int = 20) -> None:
@@ -96,16 +200,65 @@ def save_recent_url(output_dir: Path, url: str, *, max_items: int = 20) -> None:
     if not stripped:
         return
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    existing = load_recent_urls(output_dir, max_items=max_items)
+    host = url_host_key(stripped)
+    if not host:
+        return
 
-    next_urls = [stripped]
-    for item in existing:
-        if item != stripped:
-            next_urls.append(item)
+    store = _load_recent_store(output_dir, max_items=max_items)
+    existing_sites = store.get(RECENT_SITES_KEY, [])
+    if not isinstance(existing_sites, list):
+        existing_sites = []
 
-    file_path = output_dir / RECENT_URLS_FILE
-    file_path.write_text(
-        json.dumps(next_urls[:max_items], ensure_ascii=True, indent=2),
-        encoding="utf-8",
-    )
+    next_sites = [{"host": host, "last_url": stripped}]
+    for item in existing_sites:
+        if not isinstance(item, dict):
+            continue
+        existing_host = _normalize_host(str(item.get("host") or ""))
+        existing_url = str(item.get("last_url") or "").strip()
+        if not existing_host or not existing_url:
+            continue
+        if existing_host != host:
+            next_sites.append({"host": existing_host, "last_url": existing_url})
+
+    store[RECENT_SITES_KEY] = next_sites[:max_items]
+    _write_recent_store(output_dir, store, max_items=max_items)
+
+
+def load_profile_for_url(output_dir: Path, url: str, *, max_items: int = 20) -> str | None:
+    host = url_host_key(url)
+    if not host:
+        return None
+
+    store = _load_recent_store(output_dir, max_items=max_items)
+    profile_map = store.get(PROFILE_BY_HOST_KEY, {})
+    if not isinstance(profile_map, dict):
+        return None
+
+    value = str(profile_map.get(host) or "").strip()
+    return value or None
+
+
+def save_profile_for_url(
+    output_dir: Path,
+    url: str,
+    profile_path: str | None,
+    *,
+    max_items: int = 20,
+) -> None:
+    host = url_host_key(url)
+    if not host:
+        return
+
+    store = _load_recent_store(output_dir, max_items=max_items)
+    profile_map = store.get(PROFILE_BY_HOST_KEY, {})
+    if not isinstance(profile_map, dict):
+        profile_map = {}
+
+    normalized_value = str(profile_path or "").strip()
+    if normalized_value:
+        profile_map[host] = normalized_value
+    else:
+        profile_map.pop(host, None)
+
+    store[PROFILE_BY_HOST_KEY] = profile_map
+    _write_recent_store(output_dir, store, max_items=max_items)

@@ -11,10 +11,13 @@ import streamlit as st
 from dashboard.cli_builder import DashboardRunOptions, build_crawler_command
 from dashboard.file_views import (
     list_yaml_profiles,
+    load_profile_for_url,
     load_recent_urls,
     read_checkpoint,
     read_jsonl_tail,
+    save_profile_for_url,
     save_recent_url,
+    url_host_key,
 )
 from dashboard.process_manager import DashboardProcessManager
 
@@ -85,6 +88,11 @@ def main() -> None:
         st.session_state.start_url = recent_urls[0] if recent_urls else ""
     if "last_run_summary" not in st.session_state:
         st.session_state.last_run_summary = None
+    if "selected_profile_path" not in st.session_state:
+        remembered = load_profile_for_url(OUTPUT_DIR, st.session_state.start_url)
+        st.session_state.selected_profile_path = remembered or ""
+    if "profile_host_key" not in st.session_state:
+        st.session_state.profile_host_key = url_host_key(st.session_state.start_url)
 
     st.sidebar.header("Run Controls")
     chosen_recent = st.sidebar.selectbox(
@@ -97,12 +105,44 @@ def main() -> None:
 
     start_url = st.sidebar.text_input("Start URL", key="start_url")
 
+    current_host = url_host_key(start_url)
+    if st.session_state.get("profile_host_key") != current_host:
+        remembered_profile = load_profile_for_url(OUTPUT_DIR, start_url)
+        st.session_state.selected_profile_path = remembered_profile or ""
+        st.session_state.profile_host_key = current_host
+    else:
+        remembered_profile = load_profile_for_url(OUTPUT_DIR, start_url)
+
     profile_choices: list[Path | None] = [None, *base_profiles, *learned_profiles]
-    selected_profile = st.sidebar.selectbox(
+
+    def _profile_value(profile: Path | None) -> str:
+        if profile is None:
+            return ""
+        return str(profile.resolve())
+
+    profile_by_value = {_profile_value(profile): profile for profile in profile_choices}
+    profile_values = list(profile_by_value.keys())
+    selected_profile_value = str(st.session_state.get("selected_profile_path") or "").strip()
+    if selected_profile_value not in profile_values:
+        selected_profile_value = ""
+
+    selected_profile_value = st.sidebar.selectbox(
         "Profile",
-        options=profile_choices,
-        format_func=profile_label,
+        options=profile_values,
+        index=profile_values.index(selected_profile_value),
+        format_func=lambda value: profile_label(profile_by_value.get(value)),
     )
+    st.session_state.selected_profile_path = selected_profile_value
+
+    remembered_profile_value = str(remembered_profile or "").strip()
+    if current_host and selected_profile_value != remembered_profile_value:
+        save_profile_for_url(
+            OUTPUT_DIR,
+            start_url,
+            (selected_profile_value or None),
+        )
+
+    selected_profile = profile_by_value.get(selected_profile_value)
 
     resume = st.sidebar.checkbox("Resume from checkpoint", value=True)
     headless = st.sidebar.checkbox("Headless", value=False)
@@ -133,7 +173,7 @@ def main() -> None:
             if not start_url.strip():
                 st.error("Start URL is required.")
             else:
-                profile_path = str(selected_profile) if selected_profile is not None else None
+                profile_path = str(selected_profile.resolve()) if selected_profile is not None else None
 
                 options = DashboardRunOptions(
                     start_url=start_url.strip(),
@@ -155,6 +195,9 @@ def main() -> None:
                 ok, message = manager.start(command, cwd=AUTOMATION_DIR)
                 if ok:
                     save_recent_url(OUTPUT_DIR, options.start_url)
+                    save_profile_for_url(OUTPUT_DIR, options.start_url, profile_path)
+                    st.session_state.profile_host_key = url_host_key(options.start_url)
+                    st.session_state.selected_profile_path = profile_path or ""
                     st.session_state.last_run_summary = {
                         "url": options.start_url,
                         "profile": (

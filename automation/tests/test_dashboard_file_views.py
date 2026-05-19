@@ -12,10 +12,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from dashboard.file_views import (
     list_yaml_profiles,
+    load_profile_for_url,
     load_recent_urls,
     read_checkpoint,
     read_jsonl_tail,
+    save_profile_for_url,
     save_recent_url,
+    url_host_key,
 )
 
 
@@ -50,17 +53,77 @@ class DashboardFileViewTests(unittest.TestCase):
 
             self.assertEqual(checkpoint.get("_parse_error"), "invalid_json")
 
-    def test_recent_url_save_and_load(self) -> None:
+    def test_recent_url_save_and_load_collapses_same_host(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            save_recent_url(output_dir, "https://one.example")
-            save_recent_url(output_dir, "https://two.example")
-            save_recent_url(output_dir, "https://one.example")
+            save_recent_url(output_dir, "https://www.examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/")
+            save_recent_url(output_dir, "https://examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/2/")
+            save_recent_url(output_dir, "https://free-braindumps.com/amazon/free-aws-certified-cloud-practitioner-braindumps/page-2")
 
             urls = load_recent_urls(output_dir)
 
-            self.assertEqual(urls[0], "https://one.example")
-            self.assertEqual(urls[1], "https://two.example")
+            self.assertEqual(len(urls), 2)
+            self.assertEqual(
+                urls[0],
+                "https://free-braindumps.com/amazon/free-aws-certified-cloud-practitioner-braindumps/page-2",
+            )
+            self.assertEqual(
+                urls[1],
+                "https://examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/2/",
+            )
+
+    def test_profile_mapping_is_reused_for_same_host(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            profile_path = "C:/profiles/examtopics_like.yaml"
+            url_one = "https://www.examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/"
+            url_two = "https://examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/2/"
+
+            save_profile_for_url(output_dir, url_one, profile_path)
+
+            self.assertEqual(load_profile_for_url(output_dir, url_two), profile_path)
+
+            save_profile_for_url(output_dir, url_two, None)
+            self.assertIsNone(load_profile_for_url(output_dir, url_one))
+
+    def test_legacy_recent_urls_list_is_migrated_on_save(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            file_path = output_dir / "dashboard_recent_urls.json"
+            file_path.write_text(
+                json.dumps(
+                    [
+                        "https://www.examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/",
+                        "https://free-braindumps.com/amazon/free-aws-certified-cloud-practitioner-braindumps/page-2",
+                    ],
+                    ensure_ascii=True,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            urls = load_recent_urls(output_dir)
+            self.assertEqual(len(urls), 2)
+
+            save_profile_for_url(
+                output_dir,
+                "https://www.examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/",
+                "C:/profiles/examtopics_like.yaml",
+            )
+
+            migrated = json.loads(file_path.read_text(encoding="utf-8"))
+            self.assertIsInstance(migrated, dict)
+            self.assertIn("recent_sites", migrated)
+            self.assertIn("profile_by_host", migrated)
+            self.assertEqual(
+                migrated["profile_by_host"].get("examtopics.com"),
+                "C:/profiles/examtopics_like.yaml",
+            )
+
+    def test_url_host_key_normalization(self) -> None:
+        self.assertEqual(url_host_key("https://www.Example.com:8443/path"), "example.com")
+        self.assertEqual(url_host_key("example.com/path"), "example.com")
+        self.assertEqual(url_host_key("   "), "")
 
     def test_list_profiles(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
