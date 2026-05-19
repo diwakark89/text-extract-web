@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reveal Toggle Duplicate Selectors Fixture</title>
+    <style>
+      #answerQ2 {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel-body question-body">
+      <p class="lead">Which AWS service provides object storage?</p>
+      <ol class="ui-selectable" type="A">
+        <li class="ui-selectee">Amazon EC2</li>
+        <li class="ui-selectee">Amazon EBS</li>
+        <li class="ui-selectee">Amazon S3</li>
+        <li class="ui-selectee">Amazon RDS</li>
+      </ol>
+
+      <a
+        class="btn btn-primary btn-lg reveal-solution"
+        data-toggle="collapse"
+        href="#answerQ2"
+        aria-expanded="false"
+        >Reveal Solution</a
+      >
+
+      <div id="answerQ2">
+        <p><strong>Answer(s):</strong> C</p>
+      </div>
+    </div>
+
+    <script>
+      const button = document.querySelector("a.reveal-solution");
+      const answer = document.getElementById("answerQ2");
+
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        const shouldShow = answer.style.display === "none";
+        answer.style.display = shouldShow ? "block" : "none";
+        button.setAttribute("aria-expanded", shouldShow ? "true" : "false");
+      });
+    </script>
+  </body>
+</html>

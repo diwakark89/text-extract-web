@@ -146,6 +146,11 @@ def main() -> None:
 
     resume = st.sidebar.checkbox("Resume from checkpoint", value=True)
     headless = st.sidebar.checkbox("Headless", value=False)
+    prompt_for_login_at_start = st.sidebar.checkbox(
+        "Prompt for login at start",
+        value=False,
+        help="Open page and wait for manual login before crawling starts.",
+    )
     selector_debug = st.sidebar.checkbox("Selector debug", value=False)
     require_answers = st.sidebar.checkbox("Require answers", value=True)
     auto_learn_profiles = st.sidebar.checkbox("Auto learn profiles", value=True)
@@ -190,6 +195,7 @@ def main() -> None:
                     auto_learn_profiles=auto_learn_profiles,
                     selector_debug=selector_debug,
                     model=model.strip() or "gpt-5",
+                    prompt_for_login_at_start=prompt_for_login_at_start,
                 )
                 command = build_crawler_command(AUTOMATION_DIR, options)
                 ok, message = manager.start(command, cwd=AUTOMATION_DIR)
@@ -206,6 +212,7 @@ def main() -> None:
                             else "default profile logic"
                         ),
                         "max_records": options.max_records,
+                        "prompt_for_login_at_start": options.prompt_for_login_at_start,
                         "started_at": datetime.now(timezone.utc).isoformat(),
                         "command": shlex.join(command),
                         "stopped_at": "",

@@ -18,6 +18,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             profile_path=str((PROJECT_ROOT / "profiles" / "examtopics_like.yaml").resolve()),
             resume=True,
             headless=True,
+            prompt_for_login_at_start=True,
             selector_debug=True,
             require_answers=True,
             auto_learn_profiles=True,
@@ -39,6 +40,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn(options.profile_path, command)
         self.assertIn("--resume", command)
         self.assertIn("--headless", command)
+        self.assertIn("--prompt-for-login-at-start", command)
         self.assertIn("--selector-debug", command)
         self.assertIn("--require-answers", command)
         self.assertIn("--auto-learn-profiles", command)
@@ -49,6 +51,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             profile_path=None,
             resume=False,
             headless=False,
+            prompt_for_login_at_start=False,
             selector_debug=False,
             require_answers=False,
             auto_learn_profiles=False,
@@ -59,6 +62,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertNotIn("--profile", command)
         self.assertIn("--no-resume", command)
         self.assertIn("--no-headless", command)
+        self.assertIn("--no-prompt-for-login-at-start", command)
         self.assertIn("--no-selector-debug", command)
         self.assertIn("--allow-missing-answers", command)
         self.assertIn("--no-auto-learn-profiles", command)

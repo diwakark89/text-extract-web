@@ -78,6 +78,7 @@ class RunConfig(BaseModel):
     selector_debug: bool = False
     headless: bool = False
     slow_mo_ms: int = 0
+    prompt_for_login_at_start: bool = False
 
 
 def domain_from_url(url: str) -> str:

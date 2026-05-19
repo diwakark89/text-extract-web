@@ -69,6 +69,24 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parse_answer_letters(candidates[1].answer_text), ["A", "B"])
         self.assertGreaterEqual(len(candidates[2].option_texts), 4)
 
+    async def test_reveal_answer_deduplicates_overlapping_selectors(self) -> None:
+        fixture = (
+            PROJECT_ROOT / "tests" / "fixtures" / "reveal_toggle_duplicate_selectors.html"
+        ).resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.runtime.state.selector_overrides["show_answer_buttons"] = [
+            "a.reveal-solution",
+            "a[data-toggle='collapse'][href*='answerQ']",
+        ]
+
+        clicked = await self.runtime.reveal_answer()
+        self.assertTrue(clicked)
+
+        candidate = await self.runtime.extract_candidate()
+        self.assertIn("Answer(s):", candidate.answer_text)
+        self.assertEqual(parse_answer_letters(candidate.answer_text), ["C"])
+
     async def test_has_next_page_true_for_site_pagination_link(self) -> None:
         fixture = (PROJECT_ROOT / "tests" / "fixtures" / "pagination_signals.html").resolve().as_uri()
         await self.runtime.open_url(fixture)

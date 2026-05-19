@@ -115,6 +115,7 @@ Useful flags:
 - `--min-confidence`: triggers stricter intervention when extraction confidence is low.
 - `--min-quality-score`: minimum score required to persist a record.
 - `--require-answers / --allow-missing-answers`: enforce answer presence.
+- `--prompt-for-login-at-start / --no-prompt-for-login-at-start`: pause before crawl so you can log in manually.
 - `--max-consecutive-failures`: intervention threshold.
 - `--selector-debug`: write selector match details per extracted question.
 

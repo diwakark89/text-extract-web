@@ -116,6 +116,11 @@ class CrawlRunner:
         async with BrowserRuntime(self.config, selector_profile, state) as browser:
             await browser.open_url(target_url)
 
+            if self.config.prompt_for_login_at_start:
+                continue_run = await self._prompt_for_login_at_start(browser, state)
+                if not continue_run:
+                    await self._save_checkpoint(browser, state, checkpoint_store)
+
             toolbox = CopilotToolbox(
                 browser=browser,
                 store=store,
@@ -136,22 +141,23 @@ class CrawlRunner:
                 else None,
             )
 
-            if self.config.orchestration_mode == "llm_orchestrator":
-                await self._run_llm_orchestrated_loop(
-                    browser=browser,
-                    state=state,
-                    profile_store=profile_store,
-                    checkpoint_store=checkpoint_store,
-                    toolbox=toolbox,
-                )
-            else:
-                await self._run_deterministic_loop(
-                    browser=browser,
-                    state=state,
-                    profile_store=profile_store,
-                    checkpoint_store=checkpoint_store,
-                    toolbox=toolbox,
-                )
+            if not state.stop_reason:
+                if self.config.orchestration_mode == "llm_orchestrator":
+                    await self._run_llm_orchestrated_loop(
+                        browser=browser,
+                        state=state,
+                        profile_store=profile_store,
+                        checkpoint_store=checkpoint_store,
+                        toolbox=toolbox,
+                    )
+                else:
+                    await self._run_deterministic_loop(
+                        browser=browser,
+                        state=state,
+                        profile_store=profile_store,
+                        checkpoint_store=checkpoint_store,
+                        toolbox=toolbox,
+                    )
 
         summary = RunSummary(
             start_url=target_url,
@@ -290,8 +296,7 @@ class CrawlRunner:
             candidates = await browser.extract_page_candidates()
             if not candidates:
                 single_candidate = await browser.extract_candidate()
-                if single_candidate.question:
-                    candidates = [single_candidate]
+                candidates = [single_candidate]
 
             state.current_page_candidates_found = max(
                 state.current_page_candidates_found,
@@ -377,6 +382,7 @@ class CrawlRunner:
             question=candidate.question,
             options=options,
             answers=answers,
+            extracted_answer_text=candidate.answer_text,
             confidence_value=float(candidate.confidence or 0.0),
             used_selectors=candidate.used_selectors,
         )
@@ -409,6 +415,7 @@ class CrawlRunner:
             question=retried.question,
             options=options_to_map(retried.option_texts),
             answers=parse_answer_letters(retried.answer_text),
+            extracted_answer_text=retried.answer_text,
             confidence_value=float(retried.confidence or 0.0),
             used_selectors=retried.used_selectors,
         )
@@ -537,6 +544,31 @@ class CrawlRunner:
             "answer": answer,
             "wasFreeform": True,
         }
+
+    async def _prompt_for_login_at_start(self, browser: BrowserRuntime, state: RuntimeState) -> bool:
+        self.console.print("[yellow]Manual login prompt enabled.[/yellow]")
+        self.console.print("Complete login/challenge in the opened browser tab before crawling starts.")
+        self.console.print("Options: [c]ontinue when logged in, [q]uit")
+
+        while True:
+            decision = (await _async_input("Choose action [c/q]: ")).strip().lower() or "c"
+
+            if decision in {"c", "continue"}:
+                state.captcha_detected = False
+                state.consecutive_failures = 0
+                state.last_warning = ""
+                state.page_started_at_epoch = time.time()
+                if browser.page and browser.page.url:
+                    state.current_url = browser.page.url
+                self.console.print("[green]Continuing crawl after manual login.[/green]")
+                return True
+
+            if decision in {"q", "quit"}:
+                state.stop_reason = "user_requested_stop"
+                self.console.print("[yellow]Run stopped before extraction.[/yellow]")
+                return False
+
+            self.console.print("[red]Invalid choice. Enter 'c' or 'q'.[/red]")
 
     async def _manual_intervention(
         self,

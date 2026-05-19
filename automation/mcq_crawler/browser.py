@@ -143,7 +143,7 @@ async def _extract_page_candidates_impl(runtime: "BrowserRuntime", max_candidate
         raw = await runtime.page.evaluate(
                 """
                 ({ containerSelectors, questionSelectors, optionSelectors, answerSelectors, maxCandidates }) => {
-                    const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+                    const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
                     const uniq = (items) => {
                         const out = [];
                         for (const item of items) {
@@ -428,7 +428,9 @@ class BrowserRuntime:
         if self.page is None:
             raise RuntimeError("Browser page not initialized")
 
-        clicked_any = False
+        seen_controls: set[str] = set()
+        clicked_count = 0
+
         for selector in self._selector_chain("show_answer_buttons"):
             try:
                 locator = self.page.locator(selector)
@@ -437,14 +439,173 @@ class BrowserRuntime:
                     continue
 
                 for index in range(count):
+                    candidate = locator.nth(index)
+
                     try:
-                        await locator.nth(index).click(timeout=1000)
-                        clicked_any = True
+                        handle = await candidate.element_handle()
+                        if handle is None:
+                            continue
                     except Exception:
                         continue
+
+                    try:
+                        control_key = await handle.evaluate(
+                            """
+                            (el) => {
+                              const tag = String(el.tagName || "").toLowerCase();
+                              const id = String(el.id || "");
+                              const classes = String(el.className || "")
+                                .trim()
+                                .split(/\\s+/)
+                                .filter(Boolean)
+                                .slice(0, 3)
+                                .join(".");
+                              const href = String(el.getAttribute("href") || "");
+                              const dataTarget = String(el.getAttribute("data-target") || "");
+                              const ariaControls = String(el.getAttribute("aria-controls") || "");
+
+                              let depth = 0;
+                              let cursor = el;
+                              const path = [];
+                              while (cursor && depth < 7) {
+                                let part = String(cursor.tagName || "").toLowerCase();
+                                if (!part) {
+                                  break;
+                                }
+                                if (cursor.id) {
+                                  part += `#${cursor.id}`;
+                                  path.unshift(part);
+                                  break;
+                                }
+
+                                const sib = cursor.parentElement
+                                  ? Array.from(cursor.parentElement.children)
+                                      .filter((node) => node.tagName === cursor.tagName)
+                                      .indexOf(cursor) + 1
+                                  : 1;
+                                part += `:nth-of-type(${sib})`;
+                                path.unshift(part);
+                                cursor = cursor.parentElement;
+                                depth += 1;
+                              }
+
+                              return [
+                                tag,
+                                id,
+                                classes,
+                                href,
+                                dataTarget,
+                                ariaControls,
+                                path.join(">"),
+                              ].join("|");
+                            }
+                            """,
+                        )
+                    except Exception:
+                        continue
+
+                    if control_key in seen_controls:
+                        continue
+                    seen_controls.add(control_key)
+
+                    try:
+                        should_click = await handle.evaluate(
+                            """
+                            (el) => {
+                              const isVisible = (node) => {
+                                if (!node) return false;
+                                const style = window.getComputedStyle(node);
+                                if (style.display === "none" || style.visibility === "hidden") {
+                                  return false;
+                                }
+                                const rect = node.getBoundingClientRect();
+                                return rect.width > 0 && rect.height > 0;
+                              };
+
+                              if (!isVisible(el)) {
+                                return false;
+                              }
+
+                              if (el.hasAttribute("disabled")) {
+                                return false;
+                              }
+
+                              const ariaDisabled = String(el.getAttribute("aria-disabled") || "").toLowerCase();
+                              if (ariaDisabled === "true") {
+                                return false;
+                              }
+
+                              const ariaExpanded = String(el.getAttribute("aria-expanded") || "").toLowerCase();
+                              if (ariaExpanded === "true") {
+                                return false;
+                              }
+
+                              const directTarget = String(
+                                el.getAttribute("data-target") || el.getAttribute("aria-controls") || "",
+                              ).trim();
+                              let targetSelector = "";
+                              if (directTarget) {
+                                targetSelector = directTarget.startsWith("#")
+                                  ? directTarget
+                                  : `#${directTarget.replace(/^#/, "")}`;
+                              } else {
+                                const href = String(el.getAttribute("href") || "").trim();
+                                if (href.startsWith("#")) {
+                                  targetSelector = href;
+                                } else {
+                                  const hashIndex = href.indexOf("#");
+                                  if (hashIndex >= 0) {
+                                    targetSelector = href.slice(hashIndex);
+                                  }
+                                }
+                              }
+
+                              if (targetSelector) {
+                                try {
+                                  const target = document.querySelector(targetSelector);
+                                  if (target && isVisible(target)) {
+                                    return false;
+                                  }
+                                } catch {
+                                  // ignore invalid selector derived from attribute value
+                                }
+                              }
+
+                              return true;
+                            }
+                            """,
+                        )
+                    except Exception:
+                        should_click = True
+
+                    if not should_click:
+                        continue
+
+                    try:
+                        await candidate.scroll_into_view_if_needed(timeout=1000)
+                    except Exception:
+                        pass
+
+                    clicked = False
+                    try:
+                        await candidate.click(timeout=1500)
+                        clicked = True
+                    except Exception:
+                        try:
+                            await handle.evaluate("(el) => el.click()")
+                            clicked = True
+                        except Exception:
+                            clicked = False
+
+                    if clicked:
+                        clicked_count += 1
             except Exception:
                 continue
-        return clicked_any
+
+        if clicked_count > 0:
+            await self._wait_for_answer_reveal(timeout_ms=1800)
+
+        return clicked_count > 0
 
     async def click_next(self) -> bool:
         if self.page is None:
@@ -526,7 +687,7 @@ class BrowserRuntime:
                   const ariaDisabled = String(node.getAttribute("aria-disabled") || "").toLowerCase();
                   if (ariaDisabled === "true") continue;
 
-                  const text = String(node.innerText || "").replace(/\s+/g, " ").trim().toLowerCase();
+                  const text = String(node.innerText || "").replace(/\\s+/g, " ").trim().toLowerCase();
                   const href = String(node.getAttribute("href") || "").trim().toLowerCase();
                   const rel = String(node.getAttribute("rel") || "").trim().toLowerCase();
                   const ariaLabel = String(node.getAttribute("aria-label") || "").trim().toLowerCase();
@@ -658,6 +819,16 @@ class BrowserRuntime:
             await asyncio.sleep(0.2)
         return False
 
+    async def _wait_for_answer_reveal(self, timeout_ms: int = 1500) -> None:
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        answer_selectors = self._selector_chain("answer")
+
+        while asyncio.get_running_loop().time() < deadline:
+            answer_text, _ = await self._first_text(answer_selectors)
+            if _clean_text(answer_text):
+                return
+            await asyncio.sleep(0.15)
+
     async def screenshot(self, path: str) -> str:
         if self.page is None:
             raise RuntimeError("Browser page not initialized")
@@ -748,7 +919,7 @@ class BrowserRuntime:
                 if (!el) return "";
                 if (el.id) return `#${el.id}`;
                 const cls = (el.className || "")
-                  .split(/\s+/)
+                  .split(/\\s+/)
                   .filter(Boolean)
                   .slice(0, 3)
                   .join(".");

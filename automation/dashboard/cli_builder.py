@@ -21,6 +21,7 @@ class DashboardRunOptions:
     auto_learn_profiles: bool = True
     selector_debug: bool = False
     model: str = "gpt-5"
+    prompt_for_login_at_start: bool = False
 
 
 def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) -> list[str]:
@@ -46,6 +47,11 @@ def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) ->
         str(options.min_quality_score),
         "--headless" if options.headless else "--no-headless",
         "--resume" if options.resume else "--no-resume",
+        (
+            "--prompt-for-login-at-start"
+            if options.prompt_for_login_at_start
+            else "--no-prompt-for-login-at-start"
+        ),
         "--require-answers" if options.require_answers else "--allow-missing-answers",
         "--auto-learn-profiles" if options.auto_learn_profiles else "--no-auto-learn-profiles",
         "--selector-debug" if options.selector_debug else "--no-selector-debug",

@@ -40,6 +40,11 @@ def run(
     max_consecutive_failures: int = typer.Option(3, help="Failures before manual intervention is forced"),
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
     slow_mo_ms: int = typer.Option(0, help="Playwright slow motion delay in ms"),
+    prompt_for_login_at_start: bool = typer.Option(
+        False,
+        "--prompt-for-login-at-start/--no-prompt-for-login-at-start",
+        help="Pause after opening URL so you can manually log in before crawling",
+    ),
 ) -> None:
     config = RunConfig(
         start_url=start_url,
@@ -64,6 +69,7 @@ def run(
         max_consecutive_failures=max_consecutive_failures,
         headless=headless,
         slow_mo_ms=slow_mo_ms,
+        prompt_for_login_at_start=prompt_for_login_at_start,
     )
 
     summary = asyncio.run(run_crawl(config))

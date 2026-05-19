@@ -293,8 +293,46 @@ class CopilotToolbox:
         options: dict[str, str],
         answers: list[str],
         confidence_value: float,
+        extracted_answer_text: str = "",
         used_selectors: dict[str, str],
     ) -> tuple[bool, str, dict]:
+        missing_fields: list[str] = []
+        normalized_question = (question or "").strip()
+        if not normalized_question:
+            missing_fields.append("question")
+        if len(options) < 2:
+            missing_fields.append("options")
+        if not answers:
+            missing_fields.append("answer")
+
+        if missing_fields:
+            payload = {
+                "reason": "missing_extraction_fields",
+                "stage": "save_candidate_record",
+                "missing_fields": missing_fields,
+                "question": question,
+                "options": options,
+                "answers": answers,
+                "answer_text": extracted_answer_text,
+                "url": self.browser.page.url if self.browser.page else "",
+                "used_selectors": used_selectors,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            self.store.append_error(payload)
+            if self.selector_debug:
+                self.store.append_debug_event(
+                    {
+                        "event": "record_missing_fields",
+                        "timestamp": payload["timestamp"],
+                        "url": payload["url"],
+                        "missing_fields": missing_fields,
+                        "question_preview": question[:180],
+                        "options_count": len(options),
+                        "answers_count": len(answers),
+                        "used_selectors": used_selectors,
+                    },
+                )
+
         if not question or len(options) < 2:
             payload = {
                 "reason": "validation_failed",
@@ -563,6 +601,11 @@ class CopilotToolbox:
             question=question,
             options=options,
             answers=answers,
+            extracted_answer_text=(
+                self.state.last_candidate.answer_text
+                if parsed.correct_answers is None and self.state.last_candidate is not None
+                else ""
+            ),
             confidence_value=confidence_value,
             used_selectors=used_selectors,
         )
@@ -597,6 +640,7 @@ class CopilotToolbox:
                     question=candidate.question,
                     options=queue_options,
                     answers=queue_answers,
+                    extracted_answer_text=candidate.answer_text,
                     confidence_value=queue_confidence,
                     used_selectors=candidate.used_selectors,
                 )

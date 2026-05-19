@@ -26,12 +26,11 @@ answer:
   - ".panel-body div[id^='answerQ'] p"
 
 show_answer_buttons:
-  - "a.reveal-solution"
-  - ".question-body a.reveal-solution"
-  - "a:has-text('Reveal Solution')"
+  - "a.reveal-solution[data-toggle='collapse'][href*='answerQ']"
+  - "a.reveal-solution[href*='answerQ']"
   - "a[data-toggle='collapse'][href*='answerQ']"
   - "button[data-toggle='collapse'][data-target*='answerQ']"
-  - "a.btn.btn-primary.btn-lg[data-toggle='collapse']"
+  - "a.btn.btn-primary.btn-lg[data-toggle='collapse'][href*='answerQ']"
 
 next_buttons:
   - "a:has-text('Next Questions')"
