@@ -30,7 +30,10 @@ class CheckpointStore:
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "current_url": current_url,
             "current_fingerprint": state.current_fingerprint,
+            "stop_reason": state.stop_reason,
+            "last_warning": state.last_warning,
             "records_written": state.records_written,
+            "max_records": state.max_records,
             "rejected_records": state.rejected_records,
             "duplicate_records": state.duplicate_records,
             "next_index": state.next_index,
@@ -42,6 +45,16 @@ class CheckpointStore:
             "seen_fingerprints": sorted(state.seen_fingerprints),
             "selector_success_counts": state.selector_success_counts,
             "domain": state.domain,
+            "run_started_at_epoch": state.run_started_at_epoch,
+            "page_started_at_epoch": state.page_started_at_epoch,
+            "current_page_url": state.current_page_url,
+            "current_page_candidates_found": state.current_page_candidates_found,
+            "current_page_saved": state.current_page_saved,
+            "current_page_skipped": state.current_page_skipped,
+            "last_page_candidates_found": state.last_page_candidates_found,
+            "last_page_saved": state.last_page_saved,
+            "last_page_skipped": state.last_page_skipped,
+            "pages_processed": state.pages_processed,
         }
         self.checkpoint_path.write_text(
             json.dumps(payload, ensure_ascii=True, indent=2),
@@ -61,6 +74,38 @@ class CheckpointStore:
         state.captcha_events = int(snapshot.get("captcha_events", state.captcha_events))
         state.user_interventions = int(snapshot.get("user_interventions", state.user_interventions))
         state.validation_failures = int(snapshot.get("validation_failures", state.validation_failures))
+
+        run_started_at_epoch = snapshot.get("run_started_at_epoch")
+        if isinstance(run_started_at_epoch, (int, float)):
+            state.run_started_at_epoch = float(run_started_at_epoch)
+
+        page_started_at_epoch = snapshot.get("page_started_at_epoch")
+        if isinstance(page_started_at_epoch, (int, float)):
+            state.page_started_at_epoch = float(page_started_at_epoch)
+
+        current_page_url = snapshot.get("current_page_url")
+        if isinstance(current_page_url, str):
+            state.current_page_url = current_page_url
+
+        state.current_page_candidates_found = int(
+            snapshot.get("current_page_candidates_found", state.current_page_candidates_found),
+        )
+        state.current_page_saved = int(
+            snapshot.get("current_page_saved", state.current_page_saved),
+        )
+        state.current_page_skipped = int(
+            snapshot.get("current_page_skipped", state.current_page_skipped),
+        )
+        state.last_page_candidates_found = int(
+            snapshot.get("last_page_candidates_found", state.last_page_candidates_found),
+        )
+        state.last_page_saved = int(
+            snapshot.get("last_page_saved", state.last_page_saved),
+        )
+        state.last_page_skipped = int(
+            snapshot.get("last_page_skipped", state.last_page_skipped),
+        )
+        state.pages_processed = int(snapshot.get("pages_processed", state.pages_processed))
 
         selector_overrides = snapshot.get("selector_overrides")
         if isinstance(selector_overrides, dict):
@@ -91,8 +136,14 @@ class CheckpointStore:
 
         current_url = snapshot.get("current_url")
         current_fingerprint = snapshot.get("current_fingerprint")
+        stop_reason = snapshot.get("stop_reason")
+        last_warning = snapshot.get("last_warning")
         if isinstance(current_fingerprint, str):
             state.current_fingerprint = current_fingerprint
+        if isinstance(stop_reason, str):
+            state.stop_reason = stop_reason
+        if isinstance(last_warning, str):
+            state.last_warning = last_warning
 
         if isinstance(current_url, str) and current_url.strip():
             return current_url.strip()

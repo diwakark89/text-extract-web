@@ -8,6 +8,7 @@ from typing import Iterable
 from playwright.async_api import (
     Browser,
     BrowserContext,
+    Locator,
     Page,
     Playwright,
     async_playwright,
@@ -58,6 +59,282 @@ def parse_answer_letters(answer_text: str) -> list[str]:
                     letters.append(letter)
 
     return letters
+
+
+MAX_OPTIONS_PER_QUESTION = 8
+_OPTION_LABEL_RE = re.compile(r"^\s*([A-J])[\).:\s-]+")
+
+
+def _unique_preserve(items: list[str]) -> list[str]:
+    deduped: list[str] = []
+    for item in items:
+        if item and item not in deduped:
+            deduped.append(item)
+    return deduped
+
+
+def _select_single_question_option_block(option_texts: list[str]) -> list[str]:
+    """Best-effort isolation of one MCQ option block from over-collected option lists."""
+    cleaned_items = [_clean_text(item) for item in option_texts if _clean_text(item)]
+
+    labels_in_order: list[str] = []
+    labeled_count = 0
+    for item in cleaned_items:
+        match = _OPTION_LABEL_RE.match(item)
+        if match:
+            labeled_count += 1
+            labels_in_order.append(match.group(1))
+
+    repeated_labels = len(set(labels_in_order)) < len(labels_in_order) if labels_in_order else False
+    should_segment = (
+        len(cleaned_items) > MAX_OPTIONS_PER_QUESTION
+        or (labeled_count >= 4 and repeated_labels)
+    )
+
+    if not should_segment:
+        return _unique_preserve(cleaned_items)
+
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    seen_labels: set[str] = set()
+    last_label: str = ""
+
+    for item in cleaned_items:
+        match = _OPTION_LABEL_RE.match(item)
+        if not match:
+            if current:
+                current.append(item)
+            continue
+
+        label = match.group(1)
+        new_block = label in seen_labels or (last_label and label < last_label)
+        if new_block:
+            if len(current) >= 2:
+                blocks.append(_unique_preserve(current))
+            current = []
+            seen_labels = set()
+            last_label = ""
+
+        current.append(item)
+        seen_labels.add(label)
+        last_label = label
+
+    if len(current) >= 2:
+        blocks.append(_unique_preserve(current))
+
+    preferred = [block for block in blocks if 3 <= len(block) <= 6]
+    if preferred:
+        return preferred[0]
+
+    bounded = [block for block in blocks if 2 <= len(block) <= MAX_OPTIONS_PER_QUESTION]
+    if bounded:
+        return bounded[0]
+
+    if len(cleaned_items) <= MAX_OPTIONS_PER_QUESTION:
+        return _unique_preserve(cleaned_items)
+
+    return []
+
+
+async def _extract_page_candidates_impl(runtime: "BrowserRuntime", max_candidates: int = 20) -> list[ExtractionCandidate]:
+        if runtime.page is None:
+                raise RuntimeError("Browser page not initialized")
+
+        raw = await runtime.page.evaluate(
+                """
+                ({ containerSelectors, questionSelectors, optionSelectors, answerSelectors, maxCandidates }) => {
+                    const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+                    const uniq = (items) => {
+                        const out = [];
+                        for (const item of items) {
+                            if (item && !out.includes(item)) out.push(item);
+                        }
+                        return out;
+                    };
+
+                    const firstText = (root, selectors) => {
+                        for (const selector of selectors) {
+                            let nodes = [];
+                            try {
+                                nodes = Array.from(root.querySelectorAll(selector));
+                            } catch {
+                                continue;
+                            }
+                            for (const node of nodes) {
+                                const text = clean(node.innerText);
+                                if (text) {
+                                    return { text, selector };
+                                }
+                            }
+                        }
+                        return { text: "", selector: "" };
+                    };
+
+                    const collectOptions = (root, selectors) => {
+                        for (const selector of selectors) {
+                            let nodes = [];
+                            try {
+                                nodes = Array.from(root.querySelectorAll(selector));
+                            } catch {
+                                continue;
+                            }
+
+                            const options = [];
+                            for (const node of nodes) {
+                                if (node.matches("li")) {
+                                    const text = clean(node.innerText);
+                                    if (text) options.push(text);
+                                    continue;
+                                }
+
+                                const listItems = Array.from(node.querySelectorAll(":scope > li"));
+                                if (listItems.length > 0) {
+                                    for (const li of listItems) {
+                                        const text = clean(li.innerText);
+                                        if (text) options.push(text);
+                                    }
+                                    continue;
+                                }
+
+                                const text = clean(node.innerText);
+                                if (text) options.push(text);
+                            }
+
+                            const deduped = uniq(options);
+                            if (deduped.length >= 2) {
+                                return { items: deduped, selector };
+                            }
+                        }
+                        return { items: [], selector: "" };
+                    };
+
+                    const roots = [];
+                    const seen = new Set();
+
+                    for (const selector of containerSelectors || []) {
+                        try {
+                            const nodes = Array.from(document.querySelectorAll(selector));
+                            for (const node of nodes) {
+                                if (!node || seen.has(node)) continue;
+                                seen.add(node);
+                                if (clean(node.innerText).length > 0) {
+                                    roots.push(node);
+                                }
+                            }
+                        } catch {
+                            continue;
+                        }
+                    }
+
+                    if (roots.length < 2) {
+                        const panelRoots = Array.from(document.querySelectorAll("[role='tabpanel']"))
+                            .filter((node) => clean(node.innerText).length > 0);
+                        roots.splice(0, roots.length, ...panelRoots);
+                    }
+
+                    if (roots.length < 2) {
+                        const fallbackRoots = Array.from(document.querySelectorAll(".tab-pane, .panel-body, article, section"))
+                            .filter((node) => node.querySelectorAll("li").length >= 2 && clean(node.innerText).includes("?"));
+                        roots.splice(0, roots.length, ...fallbackRoots);
+                    }
+
+                    const results = [];
+                    for (const root of roots.slice(0, Math.max(1, maxCandidates))) {
+                        const question = firstText(root, questionSelectors);
+                        const options = collectOptions(root, optionSelectors);
+                        const answer = firstText(root, answerSelectors);
+
+                        if (!question.text || options.items.length < 2) {
+                            continue;
+                        }
+
+                        results.push({
+                            question: question.text,
+                            option_texts: options.items,
+                            answer_text: answer.text,
+                            used_selectors: {
+                                question: question.selector,
+                                options: options.selector,
+                                answer: answer.selector,
+                            },
+                        });
+                    }
+
+                    return results;
+                }
+                """,
+                {
+                        "containerSelectors": runtime._selector_chain("question_containers"),
+                        "questionSelectors": runtime._selector_chain("question"),
+                        "optionSelectors": runtime._selector_chain("options"),
+                        "answerSelectors": runtime._selector_chain("answer"),
+                        "maxCandidates": max_candidates,
+                },
+        )
+
+        candidates: list[ExtractionCandidate] = []
+        if not isinstance(raw, list):
+                return candidates
+
+        for item in raw:
+                if not isinstance(item, dict):
+                        continue
+
+                question = _clean_text(str(item.get("question", "")))
+                option_values = item.get("option_texts")
+                if not isinstance(option_values, list):
+                        continue
+
+                option_texts = [_clean_text(str(value)) for value in option_values if _clean_text(str(value))]
+                if len(option_texts) < 2:
+                        continue
+
+                answer_text = _clean_text(str(item.get("answer_text", "")))
+                used_selectors_raw = item.get("used_selectors")
+                used_selectors: dict[str, str] = {}
+                if isinstance(used_selectors_raw, dict):
+                        for key in ("question", "options", "answer"):
+                                value = used_selectors_raw.get(key)
+                                if isinstance(value, str) and value.strip():
+                                        used_selectors[key] = value.strip()
+
+                warnings: list[str] = []
+                score = 0.0
+                if question:
+                        score += 0.45
+                else:
+                        warnings.append("question_missing")
+
+                if len(option_texts) >= 2:
+                        score += 0.35
+                else:
+                        warnings.append("insufficient_options")
+
+                if answer_text:
+                        score += 0.2
+                else:
+                        warnings.append("answer_missing")
+
+                quality_score = score
+                if len(option_texts) >= 4:
+                        quality_score += 0.05
+                if question and len(question) >= 20:
+                        quality_score += 0.03
+                quality_score = min(1.0, round(quality_score, 3))
+
+                candidates.append(
+                        ExtractionCandidate(
+                                question=question,
+                                option_texts=option_texts,
+                                answer_text=answer_text,
+                                confidence=round(score, 3),
+                                quality_score=quality_score,
+                                warnings=warnings,
+                                used_selectors=used_selectors,
+                        ),
+                )
+
+        return candidates
 
 
 class BrowserRuntime:
@@ -151,42 +428,200 @@ class BrowserRuntime:
         if self.page is None:
             raise RuntimeError("Browser page not initialized")
 
+        clicked_any = False
         for selector in self._selector_chain("show_answer_buttons"):
             try:
-                locator = self.page.locator(selector).first
-                if await locator.count() == 0:
+                locator = self.page.locator(selector)
+                count = await locator.count()
+                if count == 0:
                     continue
-                await locator.click(timeout=1000)
-                return True
+
+                for index in range(count):
+                    try:
+                        await locator.nth(index).click(timeout=1000)
+                        clicked_any = True
+                    except Exception:
+                        continue
             except Exception:
                 continue
-        return False
+        return clicked_any
 
     async def click_next(self) -> bool:
         if self.page is None:
             raise RuntimeError("Browser page not initialized")
 
-        for selector in self._selector_chain("next_buttons"):
+        selectors = self._merge_selector_chains(
+            self._selector_chain("next_buttons"),
+            [
+                "a[rel='next']",
+                "a[href*='/page-']",
+                "a[href*='page=']",
+                ".pagination a",
+                "a:has-text('Next Page')",
+                "a:has-text('Next Question')",
+                "a:has-text('Next')",
+                "button:has-text('Next')",
+            ],
+        )
+
+        for selector in selectors:
             try:
-                locator = self.page.locator(selector).first
-                if await locator.count() == 0:
-                    continue
-                await locator.click(timeout=1500)
-                return True
+                locator = self.page.locator(selector)
+                if await self._click_ranked_next_candidates(locator, min_score=1):
+                    return True
             except Exception:
                 continue
 
-        fallback = [
-            "a:has-text('Next Question')",
-            "a:has-text('Next')",
-            "button:has-text('Next')",
-        ]
-        for selector in fallback:
+        # As a last resort, allow weaker next-controls when no page-navigation signal was found.
+        for selector in selectors:
             try:
-                locator = self.page.locator(selector).first
-                if await locator.count() == 0:
+                locator = self.page.locator(selector)
+                if await self._click_ranked_next_candidates(locator):
+                    return True
+            except Exception:
+                continue
+
+        return False
+
+    async def has_next_page(self) -> bool:
+        if self.page is None:
+            raise RuntimeError("Browser page not initialized")
+
+        raw = await self.page.evaluate(
+            """
+            ({ configuredSelectors }) => {
+              const isVisible = (el) => {
+                if (!el) return false;
+                const style = window.getComputedStyle(el);
+                if (style.display === "none" || style.visibility === "hidden") return false;
+                return true;
+              };
+
+              const selectors = [
+                ...(configuredSelectors || []),
+                "a[rel='next']",
+                "a[href*='/page-']",
+                "a[href*='page=']",
+                ".pagination a",
+                ".pager a",
+                "a",
+                "button",
+              ];
+
+              const seen = new Set();
+              for (const selector of selectors) {
+                let nodes = [];
+                try {
+                  nodes = Array.from(document.querySelectorAll(selector));
+                } catch {
+                  continue;
+                }
+
+                for (const node of nodes) {
+                  if (!node || seen.has(node)) continue;
+                  seen.add(node);
+
+                  if (!isVisible(node)) continue;
+                  if (node.hasAttribute("disabled")) continue;
+                  const ariaDisabled = String(node.getAttribute("aria-disabled") || "").toLowerCase();
+                  if (ariaDisabled === "true") continue;
+
+                  const text = String(node.innerText || "").replace(/\s+/g, " ").trim().toLowerCase();
+                  const href = String(node.getAttribute("href") || "").trim().toLowerCase();
+                  const rel = String(node.getAttribute("rel") || "").trim().toLowerCase();
+                  const ariaLabel = String(node.getAttribute("aria-label") || "").trim().toLowerCase();
+
+                  const pageSignal =
+                    href.includes("/page-") ||
+                    href.includes("page=") ||
+                    text.includes("next page") ||
+                    ariaLabel.includes("next page") ||
+                    rel.includes("next");
+
+                  const questionSignal =
+                    text.includes("next question") ||
+                    href.includes("collapse_") ||
+                    href.includes("answerq");
+
+                  if (pageSignal && !questionSignal) {
+                    return true;
+                  }
+                }
+              }
+
+              return false;
+            }
+            """,
+            {
+                "configuredSelectors": self._selector_chain("next_buttons"),
+            },
+        )
+
+        return bool(raw)
+
+    async def _click_ranked_next_candidates(self, locator: Locator, *, min_score: int = -999) -> bool:
+        count = await locator.count()
+        if count == 0:
+            return False
+
+        ranked: list[tuple[int, int]] = []
+        upper_bound = min(count, 30)
+
+        for index in range(upper_bound):
+            candidate = locator.nth(index)
+
+            try:
+                if not await candidate.is_visible():
                     continue
-                await locator.click(timeout=1500)
+            except Exception:
+                continue
+
+            try:
+                disabled_attr = await candidate.get_attribute("disabled")
+                aria_disabled = (await candidate.get_attribute("aria-disabled") or "").strip().lower()
+                if disabled_attr is not None or aria_disabled == "true":
+                    continue
+            except Exception:
+                continue
+
+            try:
+                text = _clean_text(await candidate.inner_text(timeout=500)).lower()
+            except Exception:
+                text = ""
+
+            try:
+                href = ((await candidate.get_attribute("href")) or "").strip().lower()
+                rel = ((await candidate.get_attribute("rel")) or "").strip().lower()
+            except Exception:
+                href = ""
+                rel = ""
+
+            score = 0
+            if "/page-" in href or "page=" in href:
+                score += 7
+            if "next page" in text:
+                score += 5
+            if "next" in rel:
+                score += 4
+            if text == "next" or text.startswith("next "):
+                score += 2
+            if "next question" in text:
+                score -= 6
+            if "collapse_" in href or "answerq" in href:
+                score -= 6
+
+            ranked.append((score, index))
+
+        if not ranked:
+            return False
+
+        ranked.sort(reverse=True)
+        for score, index in ranked:
+            if score < min_score:
+                continue
+            candidate = locator.nth(index)
+            try:
+                await candidate.click(timeout=1500)
                 return True
             except Exception:
                 continue
@@ -389,12 +824,20 @@ class BrowserRuntime:
                 if count == 0:
                     continue
 
-                items: list[str] = []
+                raw_items: list[str] = []
                 for index in range(count):
                     text = await locator.nth(index).inner_text(timeout=1000)
                     cleaned = _clean_text(text)
-                    if cleaned and cleaned not in items:
-                        items.append(cleaned)
+                    if cleaned:
+                        raw_items.append(cleaned)
+
+                if len(raw_items) > MAX_OPTIONS_PER_QUESTION:
+                    block = _select_single_question_option_block(raw_items)
+                    if len(block) >= 2:
+                        return block, selector
+                    continue
+
+                items = _unique_preserve(raw_items)
 
                 if len(items) >= 2:
                     return items, selector
@@ -421,3 +864,6 @@ class BrowserRuntime:
             if stripped and stripped not in merged:
                 merged.append(stripped)
         return merged
+
+
+BrowserRuntime.extract_page_candidates = _extract_page_candidates_impl

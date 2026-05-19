@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import time
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 
 class SelectorProfile(BaseModel):
+    question_containers: list[str] = Field(default_factory=list)
     question: list[str] = Field(default_factory=list)
     options: list[str] = Field(default_factory=list)
     answer: list[str] = Field(default_factory=list)
@@ -82,3 +84,13 @@ class RuntimeState:
     selector_success_counts: dict[str, dict[str, int]] = field(default_factory=dict)
     last_candidate: ExtractionCandidate | None = None
     notes: dict[str, Any] = field(default_factory=dict)
+    run_started_at_epoch: float = field(default_factory=time.time)
+    page_started_at_epoch: float = field(default_factory=time.time)
+    current_page_url: str = ""
+    current_page_candidates_found: int = 0
+    current_page_saved: int = 0
+    current_page_skipped: int = 0
+    last_page_candidates_found: int = 0
+    last_page_saved: int = 0
+    last_page_skipped: int = 0
+    pages_processed: int = 0

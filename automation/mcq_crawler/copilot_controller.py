@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 import re
+import time
 from pathlib import Path
 from typing import Any, Callable
 
 from pydantic import BaseModel, Field, ValidationError
 
 from .browser import BrowserRuntime, options_to_map, parse_answer_letters
-from .models import MCQRecord, RuntimeState
+from .models import ExtractionCandidate, MCQRecord, RuntimeState
 from .storage import JsonlStore
 from .validation import validate_record_payload
 
@@ -17,7 +18,7 @@ try:
     from copilot.tools import Tool, ToolInvocation, ToolResult
 except ImportError as exc:  # pragma: no cover
     raise RuntimeError(
-        "copilot-sdk is required. Install dependencies in automation/ first.",
+        "github-copilot-sdk is required. Install dependencies in automation/ first.",
     ) from exc
 
 
@@ -35,6 +36,7 @@ class ScreenshotArgs(BaseModel):
 
 
 class SelectorOverridesArgs(BaseModel):
+    question_containers: list[str] | None = None
     question: list[str] | None = None
     options: list[str] | None = None
     answer: list[str] | None = None
@@ -62,6 +64,18 @@ class DiscoverSelectorsArgs(BaseModel):
         default=None,
         description="Optional profile key filter: question/options/answer",
     )
+
+
+PAGE_CANDIDATE_QUEUE_KEY = "page_candidate_queue"
+PAGE_CANDIDATE_SOURCE_URL_KEY = "page_candidate_source_url"
+ALLOWED_STOP_REASONS = {
+    "verified_no_next_page",
+    "navigation_blocked",
+    "captcha_blocked",
+    "max_records_reached",
+    "turn_limit_reached",
+    "user_requested_stop",
+}
 
 
 class CopilotToolbox:
@@ -140,6 +154,12 @@ class CopilotToolbox:
                 handler=self._click_next,
             ),
             Tool(
+                name="has_next_page",
+                description="Check if site-level pagination to another page is still available",
+                parameters={"type": "object", "properties": {}},
+                handler=self._has_next_page,
+            ),
+            Tool(
                 name="wait_for_change",
                 description="Wait for page content to change after navigation",
                 parameters=WaitForChangeArgs.model_json_schema(),
@@ -171,85 +191,56 @@ class CopilotToolbox:
             ),
         ]
 
-    async def _open_url(self, invocation: ToolInvocation) -> ToolResult:
-        args = _parse_args(OpenUrlArgs, invocation.arguments)
-        if isinstance(args, ToolResult):
-            return args
+    def _load_page_candidate_queue(self, current_url: str) -> list[ExtractionCandidate]:
+        source_url = self.state.notes.get(PAGE_CANDIDATE_SOURCE_URL_KEY, "")
+        if source_url != current_url:
+            return []
 
-        final_url = await self.browser.open_url(args.url)
-        return _success({"url": final_url}, f"opened {final_url}")
+        raw_queue = self.state.notes.get(PAGE_CANDIDATE_QUEUE_KEY)
+        if not isinstance(raw_queue, list):
+            return []
 
-    async def _get_page_context(self, invocation: ToolInvocation) -> ToolResult:
-        context = await self.browser.page_context()
-        return _success(context, "fetched page context")
+        queue: list[ExtractionCandidate] = []
+        for item in raw_queue:
+            if not isinstance(item, dict):
+                continue
+            try:
+                queue.append(ExtractionCandidate.model_validate(item))
+            except ValidationError:
+                continue
+        return queue
 
-    async def _detect_captcha(self, invocation: ToolInvocation) -> ToolResult:
-        detected = await self.browser.detect_captcha()
-        if detected:
-            self.state.captcha_detected = True
-            self.state.captcha_events += 1
-        return _success({"captcha_detected": detected}, "captcha check complete")
+    def _store_page_candidate_queue(self, current_url: str, queue: list[ExtractionCandidate]) -> None:
+        self.state.notes[PAGE_CANDIDATE_SOURCE_URL_KEY] = current_url
+        self.state.notes[PAGE_CANDIDATE_QUEUE_KEY] = [item.model_dump() for item in queue]
 
-    async def _reveal_answer(self, invocation: ToolInvocation) -> ToolResult:
-        clicked = await self.browser.reveal_answer()
-        return _success({"clicked": clicked}, "reveal action attempted")
+    def _start_page_tracking(self, current_url: str) -> None:
+        if not current_url:
+            return
 
-    async def _extract_current_mcq(self, invocation: ToolInvocation) -> ToolResult:
-        candidate = await self.browser.extract_candidate()
-        self.state.last_candidate = candidate
-        self.state.notes["last_used_selectors"] = candidate.used_selectors
+        if self.state.current_page_url == current_url:
+            return
 
-        if self.selector_debug:
-            self.store.append_debug_event(
-                {
-                    "event": "candidate_extracted",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "url": self.browser.page.url if self.browser.page else "",
-                    "question_preview": candidate.question[:180],
-                    "options_count": len(candidate.option_texts),
-                    "answer_preview": candidate.answer_text[:80],
-                    "confidence": candidate.confidence,
-                    "quality_score": candidate.quality_score,
-                    "warnings": candidate.warnings,
-                    "used_selectors": candidate.used_selectors,
-                },
-            )
+        if self.state.current_page_url:
+            self.state.last_page_candidates_found = self.state.current_page_candidates_found
+            self.state.last_page_saved = self.state.current_page_saved
+            self.state.last_page_skipped = self.state.current_page_skipped
+            self.state.pages_processed += 1
 
-        if candidate.confidence < self.min_confidence:
-            self.state.consecutive_failures += 1
-            self.state.last_warning = ",".join(candidate.warnings)
-        else:
-            self.state.last_warning = ""
+        self.state.current_page_url = current_url
+        self.state.current_page_candidates_found = 0
+        self.state.current_page_saved = 0
+        self.state.current_page_skipped = 0
 
-        return _success(candidate.model_dump(), "candidate extracted")
-
-    async def _save_current_record(self, invocation: ToolInvocation) -> ToolResult:
-        parsed = _parse_args(SaveRecordArgs, invocation.arguments)
-        if isinstance(parsed, ToolResult):
-            return parsed
-
-        if self.state.last_candidate is None and parsed.question is None:
-            return _error("No candidate available. Run extract_current_mcq first.")
-
-        question = (parsed.question or (self.state.last_candidate.question if self.state.last_candidate else "")).strip()
-
-        if parsed.options is not None:
-            options = {k.strip().upper(): v.strip() for k, v in parsed.options.items() if k.strip() and v.strip()}
-        else:
-            option_texts = self.state.last_candidate.option_texts if self.state.last_candidate else []
-            options = options_to_map(option_texts)
-
-        if parsed.correct_answers is not None:
-            answers = [item.strip().upper() for item in parsed.correct_answers if item.strip()]
-        else:
-            answer_text = self.state.last_candidate.answer_text if self.state.last_candidate else ""
-            answers = parse_answer_letters(answer_text)
-
-        confidence = parsed.confidence
-        if confidence is None and self.state.last_candidate is not None:
-            confidence = self.state.last_candidate.confidence
-        confidence_value = float(confidence or 0.0)
-
+    def _save_candidate_record(
+        self,
+        *,
+        question: str,
+        options: dict[str, str],
+        answers: list[str],
+        confidence_value: float,
+        used_selectors: dict[str, str],
+    ) -> tuple[bool, str, dict]:
         if not question or len(options) < 2:
             payload = {
                 "reason": "validation_failed",
@@ -268,17 +259,14 @@ class CopilotToolbox:
                         "url": self.browser.page.url if self.browser.page else "",
                         "question_preview": question[:180],
                         "options_count": len(options),
-                        "used_selectors": (
-                            self.state.last_candidate.used_selectors
-                            if self.state.last_candidate is not None
-                            else {}
-                        ),
+                        "used_selectors": used_selectors,
                     },
                 )
             self.state.rejected_records += 1
             self.state.validation_failures += 1
             self.state.consecutive_failures += 1
-            return _error("Record validation failed: question/options are incomplete.")
+            self.state.current_page_skipped += 1
+            return False, "Record validation failed: question/options are incomplete.", payload
 
         validation = validate_record_payload(
             question=question,
@@ -306,16 +294,13 @@ class CopilotToolbox:
                         "url": self.browser.page.url if self.browser.page else "",
                         "fingerprint": validation.fingerprint,
                         "question_preview": question[:180],
-                        "used_selectors": (
-                            self.state.last_candidate.used_selectors
-                            if self.state.last_candidate is not None
-                            else {}
-                        ),
+                        "used_selectors": used_selectors,
                     },
                 )
             self.state.rejected_records += 1
             self.state.duplicate_records += 1
-            return _error("Duplicate record rejected by fingerprint gate.")
+            self.state.current_page_skipped += 1
+            return False, "Duplicate record rejected by fingerprint gate.", payload
 
         if not validation.valid:
             payload = {
@@ -340,28 +325,26 @@ class CopilotToolbox:
                         "warnings": validation.warnings,
                         "quality_score": validation.quality_score,
                         "question_preview": question[:180],
-                        "used_selectors": (
-                            self.state.last_candidate.used_selectors
-                            if self.state.last_candidate is not None
-                            else {}
-                        ),
+                        "used_selectors": used_selectors,
                     },
                 )
             self.state.rejected_records += 1
             self.state.validation_failures += 1
             self.state.consecutive_failures += 1
-            return _error(
-                "Record rejected by quality gate: "
-                + ",".join(validation.errors),
+            self.state.current_page_skipped += 1
+            return (
+                False,
+                "Record rejected by quality gate: " + ",".join(validation.errors),
+                payload,
             )
 
-        answers = validation.normalized_answers
+        normalized_answers = validation.normalized_answers
 
         record = MCQRecord(
             index=self.state.next_index,
             question=question,
             options=options,
-            correct_answers=answers,
+            correct_answers=normalized_answers,
             source_url=self.browser.page.url if self.browser.page else "",
             confidence=confidence_value,
             quality_score=validation.quality_score,
@@ -380,36 +363,216 @@ class CopilotToolbox:
                     "confidence": record.confidence,
                     "quality_score": record.quality_score,
                     "correct_answers": record.correct_answers,
-                    "used_selectors": (
-                        self.state.last_candidate.used_selectors
-                        if self.state.last_candidate is not None
-                        else {}
-                    ),
+                    "used_selectors": used_selectors,
                     "question_preview": record.question[:180],
                 },
             )
+
         self.state.seen_fingerprints.add(validation.fingerprint)
         self.state.records_written += 1
         self.state.next_index += 1
+        self.state.current_page_saved += 1
+        self.state.page_started_at_epoch = time.time()
         self.state.consecutive_failures = 0
 
-        if self.state.last_candidate is not None:
-            for key, selector in self.state.last_candidate.used_selectors.items():
-                if key not in self.state.selector_success_counts:
-                    self.state.selector_success_counts[key] = {}
-                current = self.state.selector_success_counts[key].get(selector, 0)
-                self.state.selector_success_counts[key][selector] = current + 1
-                if self.on_selector_learn is not None:
-                    self.on_selector_learn(key, selector)
+        for key, selector in used_selectors.items():
+            if key not in self.state.selector_success_counts:
+                self.state.selector_success_counts[key] = {}
+            current = self.state.selector_success_counts[key].get(selector, 0)
+            self.state.selector_success_counts[key][selector] = current + 1
+            if self.on_selector_learn is not None:
+                self.on_selector_learn(key, selector)
 
         if self.state.records_written >= self.state.max_records:
             self.state.stop_reason = "max_records_reached"
 
-        return _success(record.model_dump(), "record saved")
+        return True, "record saved", record.model_dump()
+
+    async def _open_url(self, invocation: ToolInvocation) -> ToolResult:
+        args = _parse_args(OpenUrlArgs, invocation.arguments)
+        if isinstance(args, ToolResult):
+            return args
+
+        final_url = await self.browser.open_url(args.url)
+        return _success({"url": final_url}, f"opened {final_url}")
+
+    async def _get_page_context(self, invocation: ToolInvocation) -> ToolResult:
+        context = await self.browser.page_context()
+        return _success(context, "fetched page context")
+
+    async def _detect_captcha(self, invocation: ToolInvocation) -> ToolResult:
+        detected = await self.browser.detect_captcha()
+        if detected:
+            self.state.captcha_detected = True
+            self.state.captcha_events += 1
+        return _success({"captcha_detected": detected}, "captcha check complete")
+
+    async def _reveal_answer(self, invocation: ToolInvocation) -> ToolResult:
+        clicked = await self.browser.reveal_answer()
+        return _success({"clicked": clicked}, "reveal action attempted")
+
+    async def _extract_current_mcq(self, invocation: ToolInvocation) -> ToolResult:
+        current_url = self.browser.page.url if self.browser.page else ""
+        self._start_page_tracking(current_url)
+
+        queue = self._load_page_candidate_queue(current_url)
+
+        if not queue:
+            page_candidates = await self.browser.extract_page_candidates()
+            if len(page_candidates) >= 2:
+                queue = page_candidates
+                self.state.current_page_candidates_found = max(
+                    self.state.current_page_candidates_found,
+                    len(page_candidates),
+                )
+
+        extraction_mode = "single"
+        if queue:
+            candidate = queue.pop(0)
+            self._store_page_candidate_queue(current_url, queue)
+            extraction_mode = "page_batch"
+        else:
+            candidate = await self.browser.extract_candidate()
+            if candidate.question:
+                self.state.current_page_candidates_found = max(
+                    self.state.current_page_candidates_found,
+                    1,
+                )
+
+        self.state.last_candidate = candidate
+        self.state.notes["last_used_selectors"] = candidate.used_selectors
+
+        if self.selector_debug:
+            self.store.append_debug_event(
+                {
+                    "event": "candidate_extracted",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "url": self.browser.page.url if self.browser.page else "",
+                    "question_preview": candidate.question[:180],
+                    "options_count": len(candidate.option_texts),
+                    "answer_preview": candidate.answer_text[:80],
+                    "confidence": candidate.confidence,
+                    "quality_score": candidate.quality_score,
+                    "warnings": candidate.warnings,
+                    "used_selectors": candidate.used_selectors,
+                },
+            )
+
+        if candidate.confidence < self.min_confidence:
+            self.state.consecutive_failures += 1
+            self.state.last_warning = ",".join(candidate.warnings)
+        else:
+            self.state.last_warning = ""
+
+        result_payload = candidate.model_dump()
+        result_payload["remaining_candidates_on_page"] = len(queue)
+        result_payload["extraction_mode"] = extraction_mode
+        result_payload["page_candidates_found"] = self.state.current_page_candidates_found
+        result_payload["page_saved"] = self.state.current_page_saved
+        result_payload["page_skipped"] = self.state.current_page_skipped
+
+        return _success(result_payload, "candidate extracted")
+
+    async def _save_current_record(self, invocation: ToolInvocation) -> ToolResult:
+        parsed = _parse_args(SaveRecordArgs, invocation.arguments)
+        if isinstance(parsed, ToolResult):
+            return parsed
+
+        if self.state.last_candidate is None and parsed.question is None:
+            return _error("No candidate available. Run extract_current_mcq first.")
+
+        question = (parsed.question or (self.state.last_candidate.question if self.state.last_candidate else "")).strip()
+
+        if parsed.options is not None:
+            options = {k.strip().upper(): v.strip() for k, v in parsed.options.items() if k.strip() and v.strip()}
+        else:
+            option_texts = self.state.last_candidate.option_texts if self.state.last_candidate else []
+            options = options_to_map(option_texts)
+
+        if parsed.correct_answers is not None:
+            answers = [item.strip().upper() for item in parsed.correct_answers if item.strip()]
+        else:
+            answer_text = self.state.last_candidate.answer_text if self.state.last_candidate else ""
+            answers = parse_answer_letters(answer_text)
+
+        confidence = parsed.confidence
+        if confidence is None and self.state.last_candidate is not None:
+            confidence = self.state.last_candidate.confidence
+        confidence_value = float(confidence or 0.0)
+        used_selectors = (
+            self.state.last_candidate.used_selectors
+            if self.state.last_candidate is not None
+            else {}
+        )
+
+        saved, message, payload = self._save_candidate_record(
+            question=question,
+            options=options,
+            answers=answers,
+            confidence_value=confidence_value,
+            used_selectors=used_selectors,
+        )
+        if not saved:
+            return _error(message)
+
+        total_saved = 1
+        total_skipped = 0
+
+        current_url = self.browser.page.url if self.browser.page else ""
+        queue = self._load_page_candidate_queue(current_url)
+        can_auto_save_page_candidates = all(
+            value is None
+            for value in [
+                parsed.question,
+                parsed.options,
+                parsed.correct_answers,
+                parsed.confidence,
+            ]
+        )
+
+        if can_auto_save_page_candidates and queue:
+            for candidate in queue:
+                if self.state.stop_reason:
+                    break
+
+                queue_options = options_to_map(candidate.option_texts)
+                queue_answers = parse_answer_letters(candidate.answer_text)
+                queue_confidence = float(candidate.confidence or 0.0)
+
+                queue_saved, _, _ = self._save_candidate_record(
+                    question=candidate.question,
+                    options=queue_options,
+                    answers=queue_answers,
+                    confidence_value=queue_confidence,
+                    used_selectors=candidate.used_selectors,
+                )
+
+                if queue_saved:
+                    total_saved += 1
+                else:
+                    total_skipped += 1
+
+            self._store_page_candidate_queue(current_url, [])
+
+        if total_saved == 1 and total_skipped == 0:
+            return _success(payload, "record saved")
+
+        return _success(
+            {
+                "primary_record": payload,
+                "saved_count": total_saved,
+                "skipped_count": total_skipped,
+            },
+            f"saved {total_saved} records ({total_skipped} skipped)",
+        )
 
     async def _click_next(self, invocation: ToolInvocation) -> ToolResult:
         clicked = await self.browser.click_next()
         return _success({"clicked": clicked}, "next navigation attempted")
+
+    async def _has_next_page(self, invocation: ToolInvocation) -> ToolResult:
+        has_next = await self.browser.has_next_page()
+        return _success({"has_next_page": has_next}, "next-page check complete")
 
     async def _wait_for_change(self, invocation: ToolInvocation) -> ToolResult:
         args = _parse_args(WaitForChangeArgs, invocation.arguments)
@@ -429,6 +592,7 @@ class CopilotToolbox:
 
         merged = self.state.selector_overrides.copy()
         for field_name in [
+            "question_containers",
             "question",
             "options",
             "answer",
@@ -451,7 +615,14 @@ class CopilotToolbox:
         for key, selector in args.selectors.items():
             key_str = (key or "").strip()
             selector_str = (selector or "").strip()
-            if key_str not in {"question", "options", "answer", "show_answer_buttons", "next_buttons"}:
+            if key_str not in {
+                "question_containers",
+                "question",
+                "options",
+                "answer",
+                "show_answer_buttons",
+                "next_buttons",
+            }:
                 continue
             if not selector_str:
                 continue
@@ -490,8 +661,49 @@ class CopilotToolbox:
         if isinstance(args, ToolResult):
             return args
 
-        self.state.stop_reason = args.reason or "agent_requested_stop"
-        return _success({"stop_reason": self.state.stop_reason}, "run stop requested")
+        requested_reason = re.sub(r"\s+", "_", (args.reason or "").strip().lower())
+        if not requested_reason:
+            requested_reason = "agent_requested_stop"
+
+        self.state.notes["last_stop_request"] = {
+            "requested_reason": requested_reason,
+            "records_written": self.state.records_written,
+            "current_url": self.browser.page.url if self.browser.page else self.state.current_url,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if requested_reason not in ALLOWED_STOP_REASONS:
+            self.state.last_warning = f"ignored_stop_request:{requested_reason}"
+            return _success(
+                {
+                    "applied": False,
+                    "requested_reason": requested_reason,
+                    "allowed_reasons": sorted(ALLOWED_STOP_REASONS),
+                },
+                "stop request ignored",
+            )
+
+        if requested_reason == "verified_no_next_page":
+            has_next = await self.browser.has_next_page()
+            if has_next:
+                self.state.last_warning = "ignored_stop_request:next_page_available"
+                return _success(
+                    {
+                        "applied": False,
+                        "requested_reason": requested_reason,
+                        "has_next_page": True,
+                    },
+                    "stop request ignored",
+                )
+
+        self.state.stop_reason = requested_reason
+        return _success(
+            {
+                "applied": True,
+                "stop_reason": self.state.stop_reason,
+            },
+            "run stop requested",
+        )
 
 
 def _parse_args(schema: type[BaseModel], payload: Any) -> BaseModel | ToolResult:

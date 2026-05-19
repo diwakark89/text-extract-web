@@ -7,6 +7,7 @@ import yaml
 from .models import SelectorProfile
 
 PROFILE_KEYS = [
+    "question_containers",
     "question",
     "options",
     "answer",

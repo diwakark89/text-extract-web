@@ -20,4 +20,6 @@ mcq_crawler.egg-info/top_level.txt
 tests/test_answer_parsing.py
 tests/test_browser_fixtures.py
 tests/test_checkpoint_resume.py
+tests/test_dashboard_cli_builder.py
+tests/test_dashboard_file_views.py
 tests/test_storage_debug.py

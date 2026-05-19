@@ -1,0 +1,49 @@
+{
+  "updated_at": "2026-05-19T09:49:40.457064+00:00",
+  "current_url": "https://free-braindumps.com/amazon/free-aws-certified-cloud-practitioner-braindumps/page-12",
+  "current_fingerprint": "c9f8ea6deedd40df2656f57537088e8f79ee2f81",
+  "records_written": 10,
+  "max_records": 200,
+  "rejected_records": 1,
+  "duplicate_records": 0,
+  "next_index": 11,
+  "consecutive_failures": 0,
+  "captcha_events": 0,
+  "user_interventions": 0,
+  "validation_failures": 1,
+  "selector_overrides": {},
+  "seen_fingerprints": [
+    "0b54cd525678ec9f3da211e86ee1b073f9783c6d",
+    "1792962053dc5b221a870d8c4fa326afe0ac2cb0",
+    "1e55478d2c58855d30aece9680f2402f171072bb",
+    "2087dd006b787bc8e929c424f3a7ad2d3d653222",
+    "28eb78d977297e8f2c29f8ca54688d4d5c980e77",
+    "4e09eace3c1c6403061071e76af06e416c763565",
+    "63b44c34aa35a49364fbde72a504c59f27858a39",
+    "7b2efc5afcbc6833e281264dd887548e671f4882",
+    "d621dabeb6d1c3f90b15b0e7147df4f32871d44a",
+    "f7b8b0176043e934b656365cb19dc1811b20a5c2"
+  ],
+  "selector_success_counts": {
+    "question": {
+      ".panel-collapse.in .panel-body > p.lead": 10
+    },
+    "options": {
+      ".panel-collapse.in .panel-body > div > ol.rounded-list > li": 10
+    },
+    "answer": {
+      ".panel-collapse.in .panel-body > div[id^='answerQ'] p": 10
+    }
+  },
+  "domain": "free-braindumps.com",
+  "run_started_at_epoch": 1779184060.0517774,
+  "page_started_at_epoch": 1779184173.4195461,
+  "current_page_url": "https://free-braindumps.com/amazon/free-aws-certified-cloud-practitioner-braindumps/page-12",
+  "current_page_candidates_found": 5,
+  "current_page_saved": 1,
+  "current_page_skipped": 0,
+  "last_page_candidates_found": 4,
+  "last_page_saved": 1,
+  "last_page_skipped": 0,
+  "pages_processed": 10
+}

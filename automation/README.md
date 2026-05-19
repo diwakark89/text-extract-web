@@ -29,6 +29,35 @@ playwright install chromium
 mcq-crawler run --start-url "https://example.com/questions"
 ```
 
+## Personal Dashboard (Thin UI over CLI)
+
+For personal local use, you can launch the dashboard to trigger runs, tail logs,
+inspect output files, view profiles, and forward manual intervention input while
+keeping the CLI as the execution engine.
+
+From `automation/`:
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Dashboard capabilities:
+
+- Start/stop crawler runs using existing CLI options.
+- Resume from checkpoint.
+- View stdout/stderr logs.
+- View `records.jsonl`, `errors.jsonl`, `selector_debug.jsonl`, and checkpoint state.
+- Select base and learned domain profiles.
+- Send manual prompt input (`c/o/s/q` or selector JSON) to the running process.
+- Output is written in both JSONL and parseable JSON array mirrors:
+  - `automation/output/records.jsonl` and `automation/output/records.json`
+  - `automation/output/errors.jsonl` and `automation/output/errors.json`
+
+Model note:
+
+- If you see `Model "..." is not available`, choose a model available to your account in the dashboard Model field (for example `gpt-4.1`) and run again.
+- If you see `Model "..." is not available`, choose a model available to your account in the dashboard Model field (for example `gpt-5.4`) and run again.
+
 Detailed step-by-step guide:
 
 - `automation/GUIDE.md`

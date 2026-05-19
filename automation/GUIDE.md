@@ -18,10 +18,28 @@ playwright install chromium
 mcq-crawler run --start-url "https://example.com/questions"
 ```
 
+## 2b) Personal dashboard run
+
+If you want a thin UI for triggering runs and inspecting logs/output while still
+using CLI behavior underneath:
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Dashboard notes:
+
+- The dashboard launches `main.py run` as a subprocess.
+- Only one active run is supported (single-user personal workflow).
+- Use the manual input panel to answer intervention prompts.
+- Run output remains in `automation/output/` and is shared with CLI runs.
+
 Output files:
 
 - Records: `automation/output/records.jsonl`
+- Records (parseable JSON array): `automation/output/records.json`
 - Rejected records: `automation/output/errors.jsonl`
+- Rejected records (parseable JSON array): `automation/output/errors.json`
 - Checkpoint: `automation/output/checkpoint.json`
 - Screenshots: `automation/output/screenshots/`
 - Selector debug log (optional): `automation/output/selector_debug.jsonl`
@@ -178,6 +196,11 @@ When blocked (captcha or repeated failures), the runner prompts for action:
 - Stop run.
 
 If `--auto-learn-profiles` is enabled, manual selector overrides are saved into the domain profile.
+
+Dashboard equivalent:
+
+- When intervention is requested, send your response from the dashboard manual input box.
+- Quick actions map to common responses: `c`, `o`, `s`, `q`.
 
 ## 9) Suggested workflow for each new website
 

@@ -1,3 +1,8 @@
+question_containers:
+  - "[role='tabpanel']"
+  - ".tab-pane.active"
+  - ".tab-content > .tab-pane"
+
 question:
   - "[role='tabpanel'] > div > p:first-of-type"
   - ".tab-pane.active > div > p:first-of-type"

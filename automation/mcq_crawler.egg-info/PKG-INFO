@@ -4,9 +4,10 @@ Version: 0.1.0
 Summary: Copilot SDK + Playwright MCQ crawler
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
-Requires-Dist: copilot-sdk>=0.1.0
+Requires-Dist: github-copilot-sdk>=0.3.0
 Requires-Dist: playwright>=1.54.0
 Requires-Dist: pydantic>=2.9.0
+Requires-Dist: streamlit>=1.35.0
 Requires-Dist: typer>=0.12.0
 Requires-Dist: rich>=13.7.0
 Requires-Dist: tenacity>=9.0.0
@@ -42,6 +43,27 @@ playwright install chromium
 ```bash
 mcq-crawler run --start-url "https://example.com/questions"
 ```
+
+## Personal Dashboard (Thin UI over CLI)
+
+For personal local use, you can launch the dashboard to trigger runs, tail logs,
+inspect output files, view profiles, and forward manual intervention input while
+keeping the CLI as the execution engine.
+
+From `automation/`:
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Dashboard capabilities:
+
+- Start/stop crawler runs using existing CLI options.
+- Resume from checkpoint.
+- View stdout/stderr logs.
+- View `records.jsonl`, `errors.jsonl`, `selector_debug.jsonl`, and checkpoint state.
+- Select base and learned domain profiles.
+- Send manual prompt input (`c/o/s/q` or selector JSON) to the running process.
 
 Detailed step-by-step guide:
 

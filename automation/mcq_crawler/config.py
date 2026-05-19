@@ -10,6 +10,11 @@ from .models import SelectorProfile
 
 
 DEFAULT_SELECTOR_PROFILE = SelectorProfile(
+    question_containers=[
+        "[role='tabpanel']",
+        ".tab-pane.active",
+        ".panel-body",
+    ],
     question=[
         "p.lead",
         ".question",

@@ -1,0 +1,14 @@
+question:
+- .panel-collapse.in .panel-body > p.lead
+_meta:
+  selector_success_counts:
+    question:
+      .panel-collapse.in .panel-body > p.lead: 22
+    options:
+      .panel-collapse.in .panel-body > div > ol.rounded-list > li: 22
+    answer:
+      .panel-collapse.in .panel-body > div[id^='answerQ'] p: 22
+options:
+- .panel-collapse.in .panel-body > div > ol.rounded-list > li
+answer:
+- .panel-collapse.in .panel-body > div[id^='answerQ'] p

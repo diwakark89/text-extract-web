@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import time
 from typing import Any
 
 from rich.console import Console
@@ -21,7 +22,7 @@ try:
     from copilot.session import PermissionHandler
 except ImportError as exc:  # pragma: no cover
     raise RuntimeError(
-        "copilot-sdk is required. Install dependencies in automation/ first.",
+        "github-copilot-sdk is required. Install dependencies in automation/ first.",
     ) from exc
 
 
@@ -29,17 +30,23 @@ SYSTEM_PROMPT = """
 You are an MCQ extraction controller operating browser tools.
 
 Objectives:
-1) Extract one high-quality MCQ record at a time.
+1) Extract all high-quality MCQ records visible on the current page.
 2) Save valid records via save_current_record.
-3) Navigate to next item and continue.
-4) Stop if blocked, low confidence persists, or max records reached.
+3) Skip ambiguous or low-quality candidates and continue.
+4) Navigate to the next page and continue until limits are reached.
 
 Rules:
 - Always start by checking captcha status and page context when uncertain.
-- Use reveal_answer before extracting if answer is hidden.
-- If extraction confidence is low or validation fails repeatedly, ask for selector overrides or stop.
+- Use reveal_answer before extracting if answers are hidden.
+- If some candidates are ambiguous, keep saving valid ones instead of stopping.
+- If extraction confidence is low for the whole page or validation fails repeatedly, ask for selector overrides.
+- Do not stop because a certain record count feels sufficient; only stop on true terminal conditions.
+- Before calling stop_run for end-of-pagination, call has_next_page and stop only when it returns false.
 - Do not invent question/answer content. Use tool results only.
 """.strip()
+
+INITIAL_WAIT_TIMEOUT_SECONDS = 240
+TURN_WAIT_TIMEOUT_SECONDS = 180
 
 
 class SessionWaiter:
@@ -146,7 +153,18 @@ class CrawlRunner:
                     waiter = SessionWaiter(self.console)
                     session.on(waiter.on_event)
 
-                    await self._send_and_wait(session, waiter, SYSTEM_PROMPT)
+                    try:
+                        await self._send_and_wait(
+                            session,
+                            waiter,
+                            SYSTEM_PROMPT,
+                            timeout_seconds=INITIAL_WAIT_TIMEOUT_SECONDS,
+                        )
+                    except TimeoutError:
+                        state.last_warning = "initial_controller_timeout"
+                        self.console.print(
+                            "[yellow]Initial controller wait timed out; continuing with turn loop.[/yellow]",
+                        )
 
                     stale_turns = 0
                     previous_written = state.records_written
@@ -165,7 +183,12 @@ class CrawlRunner:
 
                         prompt = self._build_turn_prompt(turn, state)
                         try:
-                            await self._send_and_wait(session, waiter, prompt)
+                            await self._send_and_wait(
+                                session,
+                                waiter,
+                                prompt,
+                                timeout_seconds=TURN_WAIT_TIMEOUT_SECONDS,
+                            )
                         except TimeoutError:
                             state.consecutive_failures += 1
                             state.last_warning = "controller_timeout"
@@ -204,10 +227,17 @@ class CrawlRunner:
         )
         return summary
 
-    async def _send_and_wait(self, session: Any, waiter: SessionWaiter, prompt: str) -> None:
+    async def _send_and_wait(
+        self,
+        session: Any,
+        waiter: SessionWaiter,
+        prompt: str,
+        *,
+        timeout_seconds: int,
+    ) -> None:
         waiter.reset()
         await session.send(prompt)
-        await asyncio.wait_for(waiter.done.wait(), timeout=120)
+        await asyncio.wait_for(waiter.done.wait(), timeout=timeout_seconds)
 
     def _build_turn_prompt(self, turn: int, state: RuntimeState) -> str:
         state_snapshot = {
@@ -215,6 +245,14 @@ class CrawlRunner:
             "records_written": state.records_written,
             "rejected_records": state.rejected_records,
             "next_index": state.next_index,
+            "current_page_url": state.current_page_url,
+            "current_page_candidates_found": state.current_page_candidates_found,
+            "current_page_saved": state.current_page_saved,
+            "current_page_skipped": state.current_page_skipped,
+            "last_page_candidates_found": state.last_page_candidates_found,
+            "last_page_saved": state.last_page_saved,
+            "last_page_skipped": state.last_page_skipped,
+            "pages_processed": state.pages_processed,
             "consecutive_failures": state.consecutive_failures,
             "validation_failures": state.validation_failures,
             "seen_fingerprints": len(state.seen_fingerprints),
@@ -224,10 +262,13 @@ class CrawlRunner:
         }
 
         return (
-            "Execute exactly one extraction cycle."
-            " Capture page context, detect captcha if needed, reveal answer if needed,"
-            " extract candidate, save valid record, navigate next, and wait for change."
-            " If blocked, request selector overrides or call stop_run.\n\n"
+            "Execute exactly one page extraction cycle."
+            " Capture page context, detect captcha if needed, reveal answers,"
+            " extract current candidate and save records for the full visible page."
+            " Skip ambiguous items and continue. After page extraction, navigate next and wait for change."
+            " If blocked for the full page, request selector overrides."
+            " Call stop_run only for terminal conditions."
+            " For end-of-pagination, call has_next_page first and only stop when has_next_page=false.\n\n"
             f"State:\n{json.dumps(state_snapshot, ensure_ascii=True)}"
         )
 
@@ -269,13 +310,14 @@ class CrawlRunner:
 
         if decision == "s":
             await browser.click_next()
+            state.page_started_at_epoch = time.time()
             state.captcha_detected = False
             state.consecutive_failures = 0
             return
 
         if decision == "o":
             raw = await _async_input(
-                "Paste selector overrides JSON (keys: question/options/answer/show_answer_buttons/next_buttons): ",
+                "Paste selector overrides JSON (keys: question_containers/question/options/answer/show_answer_buttons/next_buttons): ",
             )
             try:
                 overrides = json.loads(raw)
