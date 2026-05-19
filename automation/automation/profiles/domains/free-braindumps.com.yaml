@@ -3,12 +3,12 @@ question:
 _meta:
   selector_success_counts:
     question:
-      .panel-collapse.in .panel-body > p.lead: 215
+      .panel-collapse.in .panel-body > p.lead: 344
     options:
-      .panel-collapse.in .panel-body > div > ol.rounded-list > li: 187
-      ol.ui-selectable > li: 28
+      .panel-collapse.in .panel-body > div > ol.rounded-list > li: 298
+      ol.ui-selectable > li: 46
     answer:
-      .panel-collapse.in .panel-body > div[id^='answerQ'] p: 215
+      .panel-collapse.in .panel-body > div[id^='answerQ'] p: 344
 options:
 - .panel-collapse.in .panel-body > div > ol.rounded-list > li
 - ol.ui-selectable > li

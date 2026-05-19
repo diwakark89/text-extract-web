@@ -4,3 +4,4 @@ automation/tests/__pycache__/*
 automation/tests/__pycache__/*
 automation/dashboard/__pycache__/*
 automation/mcq_crawler/__pycache__/*
+automation/automation/output/*
