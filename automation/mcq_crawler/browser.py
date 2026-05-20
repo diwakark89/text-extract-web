@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import re
 from typing import Iterable
+from urllib.parse import urljoin, urlparse
 
 from playwright.async_api import (
     Browser,
@@ -62,6 +63,7 @@ def parse_answer_letters(answer_text: str) -> list[str]:
 
 
 MAX_OPTIONS_PER_QUESTION = 8
+DEFAULT_MAX_PAGE_CANDIDATES = 40
 _OPTION_LABEL_RE = re.compile(r"^\s*([A-J])[\).:\s-]+")
 
 
@@ -136,7 +138,10 @@ def _select_single_question_option_block(option_texts: list[str]) -> list[str]:
     return []
 
 
-async def _extract_page_candidates_impl(runtime: "BrowserRuntime", max_candidates: int = 20) -> list[ExtractionCandidate]:
+async def _extract_page_candidates_impl(
+    runtime: "BrowserRuntime",
+    max_candidates: int = DEFAULT_MAX_PAGE_CANDIDATES,
+) -> list[ExtractionCandidate]:
         if runtime.page is None:
                 raise RuntimeError("Browser page not initialized")
 
@@ -700,6 +705,37 @@ class BrowserRuntime:
                 return true;
               };
 
+                            const normalizePath = (value) => String(value || "").trim().replace(/\/+$/, "");
+                            const currentPath = normalizePath(window.location.pathname || "");
+
+                            const isNumberedSiblingPath = (rawHref) => {
+                                const hrefValue = String(rawHref || "").trim();
+                                if (!hrefValue || hrefValue.startsWith("#") || hrefValue.startsWith("javascript:")) {
+                                    return false;
+                                }
+
+                                try {
+                                    const target = new URL(hrefValue, window.location.href);
+                                    const targetPath = normalizePath(target.pathname || "");
+                                    if (!currentPath || !targetPath) {
+                                        return false;
+                                    }
+
+                                      const currentMatch = currentPath.match(/^(.*)\/(\d+)(?:\.[a-z0-9]+)?$/i);
+                                      const targetMatch = targetPath.match(/^(.*)\/(\d+)(?:\.[a-z0-9]+)?$/i);
+                                    if (!currentMatch || !targetMatch) {
+                                        return false;
+                                    }
+                                    if (currentMatch[1] !== targetMatch[1]) {
+                                        return false;
+                                    }
+
+                                    return targetPath !== currentPath;
+                                } catch {
+                                    return false;
+                                }
+                            };
+
               const selectors = [
                 ...(configuredSelectors || []),
                 "a[rel='next']",
@@ -730,14 +766,17 @@ class BrowserRuntime:
                   if (ariaDisabled === "true") continue;
 
                   const text = String(node.innerText || "").replace(/\\s+/g, " ").trim().toLowerCase();
-                  const href = String(node.getAttribute("href") || "").trim().toLowerCase();
+                                    const rawHref = String(node.getAttribute("href") || "").trim();
+                                    const href = rawHref.toLowerCase();
                   const rel = String(node.getAttribute("rel") || "").trim().toLowerCase();
                   const ariaLabel = String(node.getAttribute("aria-label") || "").trim().toLowerCase();
+                                    const numberedSiblingSignal = isNumberedSiblingPath(rawHref);
 
                   const pageSignal =
                                         /\\/view\\/\\d+\\/?$/.test(href) ||
                     href.includes("/page-") ||
                     href.includes("page=") ||
+                                        numberedSiblingSignal ||
                     text.includes("next page") ||
                                         text.includes("next questions") ||
                     ariaLabel.includes("next page") ||
@@ -769,6 +808,19 @@ class BrowserRuntime:
         if count == 0:
             return False
 
+        current_url = self.page.url if self.page else ""
+        current_path = (urlparse(current_url).path or "").rstrip("/").lower()
+        current_match = re.match(r"^(.*)/(\d+)(?:\.[a-z0-9]+)?$", current_path) if current_path else None
+
+        def _resolved_path(raw_href: str) -> str:
+            if not raw_href:
+                return ""
+            try:
+                resolved = urljoin(current_url, raw_href)
+                return (urlparse(resolved).path or "").rstrip("/").lower()
+            except Exception:
+                return ""
+
         ranked: list[tuple[int, int]] = []
         upper_bound = min(count, 30)
 
@@ -795,17 +847,27 @@ class BrowserRuntime:
                 text = ""
 
             try:
-                href = ((await candidate.get_attribute("href")) or "").strip().lower()
+                href_raw = ((await candidate.get_attribute("href")) or "").strip()
+                href = href_raw.lower()
                 rel = ((await candidate.get_attribute("rel")) or "").strip().lower()
             except Exception:
+                href_raw = ""
                 href = ""
                 rel = ""
+
+            target_path = _resolved_path(href_raw)
+            target_match = re.match(r"^(.*)/(\d+)(?:\.[a-z0-9]+)?$", target_path) if target_path else None
 
             score = 0
             if re.search(r"/view/\d+/?$", href):
                 score += 10
             if "/page-" in href or "page=" in href:
                 score += 7
+            if current_match and target_match and current_match.group(1) == target_match.group(1):
+                if target_path == current_path:
+                    score -= 8
+                else:
+                    score += 8
             if "next questions" in text:
                 score += 6
             if "next page" in text:

@@ -90,6 +90,21 @@ Ready profile for free-braindumps AWS CCP page:
 - `automation/profiles/free_braindumps_aws_ccp_strict.yaml`
 - `automation/profiles/free_braindumps_aws_ccp_broad.yaml`
 
+Ready profile for Examcademy pages:
+
+- `automation/profiles/examcademy_like.yaml`
+
+Recommended strict run for Examcademy:
+
+```bash
+mcq-crawler run \
+  --start-url "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1" \
+  --profile automation/profiles/examcademy_like.yaml \
+  --prompt-for-login-at-start \
+  --require-answers \
+  --selector-debug
+```
+
 ## Notes
 
 - No token or Copilot CLI path is required by default.

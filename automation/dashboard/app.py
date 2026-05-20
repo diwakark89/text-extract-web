@@ -86,6 +86,10 @@ def main() -> None:
 
     if "start_url" not in st.session_state:
         st.session_state.start_url = recent_urls[0] if recent_urls else ""
+    if "recent_url_selector" not in st.session_state:
+        st.session_state.recent_url_selector = "(none)"
+    if "last_applied_recent_url" not in st.session_state:
+        st.session_state.last_applied_recent_url = ""
     if "last_run_summary" not in st.session_state:
         st.session_state.last_run_summary = None
     if "selected_profile_path" not in st.session_state:
@@ -99,9 +103,11 @@ def main() -> None:
         "Recent URL",
         options=["(none)", *recent_urls],
         index=0,
+        key="recent_url_selector",
     )
-    if chosen_recent != "(none)":
+    if chosen_recent != "(none)" and chosen_recent != st.session_state.last_applied_recent_url:
         st.session_state.start_url = chosen_recent
+        st.session_state.last_applied_recent_url = chosen_recent
 
     start_url = st.sidebar.text_input("Start URL", key="start_url")
 
@@ -217,6 +223,17 @@ def main() -> None:
                     auth_file_path=auth_file_path.strip() or "profiles/auth_hosts.yaml",
                     auto_login_timeout_seconds=int(auto_login_timeout_seconds),
                 )
+
+                # Avoid accidentally resuming into an old checkpoint URL when user entered a new URL.
+                resume_checkpoint = read_checkpoint(OUTPUT_DIR / "checkpoint.json")
+                checkpoint_current_url = str(resume_checkpoint.get("current_url") or "").strip()
+                if options.resume and checkpoint_current_url and checkpoint_current_url != options.start_url:
+                    options.resume = False
+                    st.warning(
+                        "Resume was disabled for this run because checkpoint URL differs from Start URL. "
+                        "Use the same URL as checkpoint if you want to continue that previous run."
+                    )
+
                 command = build_crawler_command(AUTOMATION_DIR, options)
                 ok, message = manager.start(command, cwd=AUTOMATION_DIR)
                 if ok:

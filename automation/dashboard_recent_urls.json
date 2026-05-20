@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "recent_sites": [
+    {
+      "host": "examcademy.com",
+      "last_url": "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1"
+    }
+  ],
+  "profile_by_host": {
+    "examcademy.com": "C:\\DK_World\\IT\\MyProjects\\Skillify\\text-extract-web\\automation\\profiles\\examcademy_like.yaml"
+  }
+}

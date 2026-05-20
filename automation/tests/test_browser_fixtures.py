@@ -69,6 +69,14 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parse_answer_letters(candidates[1].answer_text), ["A", "B"])
         self.assertGreaterEqual(len(candidates[2].option_texts), 4)
 
+    async def test_extract_page_candidates_respects_max_candidates(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "multi_question_tabpanels.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        candidates = await self.runtime.extract_page_candidates(max_candidates=3)
+
+        self.assertEqual(len(candidates), 3)
+
     async def test_reveal_answer_deduplicates_overlapping_selectors(self) -> None:
         fixture = (
             PROJECT_ROOT / "tests" / "fixtures" / "reveal_toggle_duplicate_selectors.html"
@@ -105,6 +113,12 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(await self.runtime.has_next_page())
 
+    async def test_has_next_page_true_for_numbered_sibling_paths(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "numbered_path_nav" / "1.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.assertTrue(await self.runtime.has_next_page())
+
     async def test_click_next_prefers_page_navigation_over_next_question(self) -> None:
         fixture = (PROJECT_ROOT / "tests" / "fixtures" / "pagination_signals.html").resolve().as_uri()
         await self.runtime.open_url(fixture)
@@ -112,6 +126,14 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
         clicked = await self.runtime.click_next()
         self.assertTrue(clicked)
         self.assertIn("question_only_next.html?page=3", self.runtime.page.url)
+
+    async def test_click_next_prefers_numbered_sibling_path_over_question_next(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "numbered_path_nav" / "1.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        clicked = await self.runtime.click_next()
+        self.assertTrue(clicked)
+        self.assertRegex(self.runtime.page.url, r"/numbered_path_nav/(2|3)\.html$")
 
 
 if __name__ == "__main__":

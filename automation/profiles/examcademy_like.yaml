@@ -1,0 +1,34 @@
+question_containers:
+  - "div.exam-row"
+  - "div[id^='q-']"
+  - ".exam-row"
+
+question:
+  - ".question-content > p"
+  - ".exam-content .question-content > p"
+  - ".question-content p"
+
+options:
+  - ".question-content .mc-question > ul > li.mc-option"
+  - ".question-content .mc-question > ul > li"
+  - ".mc-question > ul > li.mc-option"
+  - ".mc-question > ul > li"
+
+answer:
+  - ".question-content .mc-question .correct-answer"
+  - ".question-content .mc-question .answer"
+  - ".question-content .mc-question [class*='correct']"
+  - ".question-content .mc-question [class*='answer']"
+
+show_answer_buttons:
+  - ".question-content .mc-question > button"
+  - ".question-content .mc-question button"
+  - "button:has-text('Show Answer')"
+
+next_buttons:
+  - ".pagination-container .pagination-nav > a"
+  - ".pagination-container .pagination-numbers > a"
+  - ".pagination-nav > a"
+  - "a:has-text('→')"
+  - "a:has-text('Next Page')"
+  - "a:has-text('Next Questions')"

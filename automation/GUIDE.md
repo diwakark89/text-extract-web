@@ -50,6 +50,7 @@ This project includes two ready templates:
 
 - `automation/profiles/examtopics_like.yaml`
 - `automation/profiles/generic_panel_mcq.yaml`
+- `automation/profiles/examcademy_like.yaml`
 
 Domain-specific profile for your target page:
 
@@ -57,9 +58,14 @@ Domain-specific profile for your target page:
 - `automation/profiles/free_braindumps_aws_ccp_strict.yaml`
 - `automation/profiles/free_braindumps_aws_ccp_broad.yaml`
 
+Examcademy profile:
+
+- `automation/profiles/examcademy_like.yaml`
+
 Target URL:
 
 - <https://free-braindumps.com/amazon/free-aws-certified-cloud-practitioner-braindumps/page-14>
+- <https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1>
 
 Recommended run command for this domain:
 
@@ -70,6 +76,19 @@ mcq-crawler run \
   --min-quality-score 0.80 \
   --require-answers
 ```
+
+Recommended strict run for Examcademy (manual login before extraction):
+
+```bash
+mcq-crawler run \
+  --start-url "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1" \
+  --profile automation/profiles/examcademy_like.yaml \
+  --prompt-for-login-at-start \
+  --require-answers \
+  --selector-debug
+```
+
+Note: On Examcademy, `Show Answer` may redirect to login when unauthenticated. Keep `--prompt-for-login-at-start` enabled for strict answer-required runs.
 
 If the strict profile misses data because the page layout shifts, use broad mode:
 
