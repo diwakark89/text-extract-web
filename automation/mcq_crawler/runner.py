@@ -47,8 +47,8 @@ Rules:
 - Do not invent question/answer content. Use tool results only.
 """.strip()
 
-INITIAL_WAIT_TIMEOUT_SECONDS = 240
-TURN_WAIT_TIMEOUT_SECONDS = 180
+INITIAL_WAIT_TIMEOUT_SECONDS = 120
+TURN_WAIT_TIMEOUT_SECONDS = 90
 DEFAULT_AUTH_FILE_PATH = Path("auth/auth_hosts.yaml")
 LEGACY_AUTH_FILE_PATH = Path("profiles/auth_hosts.yaml")
 
@@ -310,9 +310,9 @@ class CrawlRunner:
                 if state.stop_reason:
                     break
 
-            await browser.wait_for_exam_content_ready(timeout_ms=5000)
-            await browser.ensure_browse_mode_ready()
             await browser.wait_for_exam_content_ready(timeout_ms=2500)
+            await browser.ensure_browse_mode_ready()
+            await browser.wait_for_exam_content_ready(timeout_ms=1000)
             await browser.reveal_answer()
 
             current_url = browser.page.url if browser.page else state.current_url
@@ -394,7 +394,7 @@ class CrawlRunner:
                     break
                 changed = await browser.wait_for_fingerprint_change(
                     previous_fingerprint=prev_fingerprint,
-                    timeout_ms=7000,
+                    timeout_ms=3000,
                 )
                 last_fingerprint_changed = changed
                 current_url = self._normalized_url(browser.page.url if browser.page else state.current_url)
@@ -862,7 +862,7 @@ class CrawlRunner:
         else:
             fingerprint_changed = await browser.wait_for_fingerprint_change(
                 previous_fingerprint=previous_fingerprint,
-                timeout_ms=7000,
+                timeout_ms=3000,
             )
             current_url = self._normalized_url(browser.page.url if browser.page else state.current_url)
             moved = bool(fingerprint_changed or (current_url and current_url != previous_url))

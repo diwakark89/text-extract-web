@@ -2,12 +2,12 @@
   "schema_version": 1,
   "recent_sites": [
     {
-      "host": "free-braindumps.com",
-      "last_url": "https://free-braindumps.com/amazon/free-saa-c03-braindumps/page-2"
+      "host": "examcademy.com",
+      "last_url": "https://examcademy.com/exams/amazon/aws-certified-solutions-architect-associate-saa-c03/1"
     },
     {
-      "host": "examcademy.com",
-      "last_url": "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1"
+      "host": "free-braindumps.com",
+      "last_url": "https://free-braindumps.com/amazon/free-saa-c03-braindumps/page-2"
     }
   ],
   "profile_by_host": {

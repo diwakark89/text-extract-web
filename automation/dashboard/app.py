@@ -184,7 +184,7 @@ def main() -> None:
     )
     selector_debug = st.sidebar.checkbox("Selector debug", value=False)
     require_answers = st.sidebar.checkbox("Require answers", value=True)
-    stop_on_missing_answers = st.sidebar.checkbox("Stop if answers missing", value=True)
+    stop_on_missing_answers = st.sidebar.checkbox("Stop if answers missing", value=False)
     auto_learn_profiles = st.sidebar.checkbox("Auto learn profiles", value=True)
     records_output_name = st.sidebar.text_input(
         "Records file name",
@@ -193,7 +193,7 @@ def main() -> None:
     )
     st.session_state.records_output_name = records_output_name.strip() or "records.jsonl"
 
-    max_records = st.sidebar.number_input("Max records", min_value=1, max_value=5000, value=200)
+    max_records = st.sidebar.number_input("Max records", min_value=1, max_value=5000, value=1000)
     max_turns = st.sidebar.number_input("Max turns", min_value=10, max_value=10000, value=800)
     start_index = st.sidebar.number_input("Start index", min_value=1, max_value=100000, value=1)
     min_confidence = st.sidebar.number_input("Min confidence", min_value=0.0, max_value=1.0, value=0.65, step=0.01)
@@ -212,7 +212,8 @@ def main() -> None:
     run_col, stop_col, refresh_col = st.columns([1, 1, 1])
 
     with run_col:
-        if st.button("Start run", type="primary", use_container_width=True):
+        start_disabled = manager.is_running()
+        if st.button("Start run", type="primary", use_container_width=True, disabled=start_disabled):
             if not start_url.strip():
                 st.error("Start URL is required.")
             else:

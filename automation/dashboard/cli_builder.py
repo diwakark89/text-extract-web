@@ -12,13 +12,13 @@ class DashboardRunOptions:
     orchestration_mode: str = "hybrid_gap_fill"
     resume: bool = False
     headless: bool = False
-    max_records: int = 200
+    max_records: int = 1000
     max_turns: int = 800
     start_index: int = 1
     min_confidence: float = 0.65
     min_quality_score: float = 0.72
     require_answers: bool = True
-    stop_on_missing_answers: bool = True
+    stop_on_missing_answers: bool = False
     auto_learn_profiles: bool = True
     selector_debug: bool = False
     model: str = "gpt-5"

@@ -71,7 +71,7 @@ def parse_answer_letters(answer_text: str) -> list[str]:
 
 
 MAX_OPTIONS_PER_QUESTION = 8
-DEFAULT_MAX_PAGE_CANDIDATES = 40
+DEFAULT_MAX_PAGE_CANDIDATES = 20
 _OPTION_LABEL_RE = re.compile(r"^\s*([A-J])[\).:\s-]+")
 
 
@@ -553,91 +553,91 @@ class BrowserRuntime:
 
                 clicked = bool(isinstance(result, dict) and result.get("clicked"))
                 if clicked:
-                        try:
-                                await self.page.wait_for_load_state("domcontentloaded", timeout=1800)
-                        except Exception:
-                                pass
-                        await asyncio.sleep(0.25)
+                    try:
+                        await self.page.wait_for_load_state("domcontentloaded", timeout=1000)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.1)
 
                 return clicked
 
-    async def wait_for_exam_content_ready(self, timeout_ms: int = 4500) -> bool:
-                if self.page is None:
-                        raise RuntimeError("Browser page not initialized")
+    async def wait_for_exam_content_ready(self, timeout_ms: int = 2500) -> bool:
+        if self.page is None:
+            raise RuntimeError("Browser page not initialized")
 
-                deadline = asyncio.get_running_loop().time() + (max(250, timeout_ms) / 1000)
-                latest_snapshot: dict[str, int] = {
-                        "question_count": 0,
-                        "option_count": 0,
-                        "answer_button_count": 0,
-                        "mode_subtitle_count": 0,
+        deadline = asyncio.get_running_loop().time() + (max(250, timeout_ms) / 1000)
+        latest_snapshot: dict[str, int] = {
+            "question_count": 0,
+            "option_count": 0,
+            "answer_button_count": 0,
+            "mode_subtitle_count": 0,
+        }
+
+        while asyncio.get_running_loop().time() < deadline:
+            snapshot = await self.page.evaluate(
+                """
+                ({ questionSelectors, optionSelectors }) => {
+                    const safeQuery = (selector) => {
+                        try {
+                            return Array.from(document.querySelectorAll(selector));
+                        } catch {
+                            return [];
+                        }
+                    };
+
+                    const questionNodes = [];
+                    for (const selector of questionSelectors || []) {
+                        questionNodes.push(...safeQuery(selector));
+                    }
+
+                    const optionNodes = [];
+                    for (const selector of optionSelectors || []) {
+                        optionNodes.push(...safeQuery(selector));
+                    }
+
+                    const answerButtons = Array.from(document.querySelectorAll("button")).filter((node) => {
+                        const text = String(node.innerText || "").trim().toLowerCase();
+                        return text === "show answer" || text === "hide answer";
+                    });
+
+                    return {
+                        question_count: questionNodes.length,
+                        option_count: optionNodes.length,
+                        answer_button_count: answerButtons.length,
+                        mode_subtitle_count: document.querySelectorAll("p.mode-switcher-subtitle").length,
+                    };
+                }
+                """,
+                {
+                    "questionSelectors": self._selector_chain("question"),
+                    "optionSelectors": self._selector_chain("options"),
+                },
+            )
+
+            if isinstance(snapshot, dict):
+                latest_snapshot = {
+                    "question_count": int(snapshot.get("question_count", 0) or 0),
+                    "option_count": int(snapshot.get("option_count", 0) or 0),
+                    "answer_button_count": int(snapshot.get("answer_button_count", 0) or 0),
+                    "mode_subtitle_count": int(snapshot.get("mode_subtitle_count", 0) or 0),
                 }
 
-                while asyncio.get_running_loop().time() < deadline:
-                        snapshot = await self.page.evaluate(
-                                """
-                                ({ questionSelectors, optionSelectors }) => {
-                                    const safeQuery = (selector) => {
-                                        try {
-                                            return Array.from(document.querySelectorAll(selector));
-                                        } catch {
-                                            return [];
-                                        }
-                                    };
-
-                                    const questionNodes = [];
-                                    for (const selector of questionSelectors || []) {
-                                        questionNodes.push(...safeQuery(selector));
-                                    }
-
-                                    const optionNodes = [];
-                                    for (const selector of optionSelectors || []) {
-                                        optionNodes.push(...safeQuery(selector));
-                                    }
-
-                                    const answerButtons = Array.from(document.querySelectorAll("button")).filter((node) => {
-                                        const text = String(node.innerText || "").trim().toLowerCase();
-                                        return text === "show answer" || text === "hide answer";
-                                    });
-
-                                    return {
-                                        question_count: questionNodes.length,
-                                        option_count: optionNodes.length,
-                                        answer_button_count: answerButtons.length,
-                                        mode_subtitle_count: document.querySelectorAll("p.mode-switcher-subtitle").length,
-                                    };
-                                }
-                                """,
-                                {
-                                        "questionSelectors": self._selector_chain("question"),
-                                        "optionSelectors": self._selector_chain("options"),
-                                },
-                        )
-
-                        if isinstance(snapshot, dict):
-                                latest_snapshot = {
-                                        "question_count": int(snapshot.get("question_count", 0) or 0),
-                                        "option_count": int(snapshot.get("option_count", 0) or 0),
-                                        "answer_button_count": int(snapshot.get("answer_button_count", 0) or 0),
-                                        "mode_subtitle_count": int(snapshot.get("mode_subtitle_count", 0) or 0),
-                                }
-
-                        has_questions = latest_snapshot["question_count"] >= 1 and latest_snapshot["option_count"] >= 2
-                        has_answer_controls = latest_snapshot["answer_button_count"] >= 1
-                        if has_questions and has_answer_controls:
-                                self.state.notes["last_content_wait"] = {
-                                        **latest_snapshot,
-                                        "ready": True,
-                                }
-                                return True
-
-                        await asyncio.sleep(0.2)
-
+            has_questions = latest_snapshot["question_count"] >= 1 and latest_snapshot["option_count"] >= 2
+            has_answer_controls = latest_snapshot["answer_button_count"] >= 1
+            if has_questions and has_answer_controls:
                 self.state.notes["last_content_wait"] = {
-                        **latest_snapshot,
-                        "ready": False,
+                    **latest_snapshot,
+                    "ready": True,
                 }
-                return False
+                return True
+
+            await asyncio.sleep(0.2)
+
+        self.state.notes["last_content_wait"] = {
+            **latest_snapshot,
+            "ready": False,
+        }
+        return False
 
     async def reveal_answer(self) -> bool:
         if self.page is None:
@@ -915,11 +915,11 @@ class BrowserRuntime:
                 return true;
               };
 
-                            const normalizePath = (value) => String(value || "").trim().replace(/\\/+$/, "");
+                            const normalizePath = (value) => String(value || "").trim().replace(new RegExp("/+$"), "");
                             const currentPath = normalizePath(window.location.pathname || "");
 
                             const parseNumberedPath = (pathValue) => {
-                                const match = String(pathValue || "").match(/^(.*)\/(\d+)(?:\.[a-z0-9]+)?$/i);
+                                const match = String(pathValue || "").match(new RegExp("^(.*)/(\\d+)(?:\\.[a-z0-9]+)?$", "i"));
                                 if (!match) {
                                     return null;
                                 }
@@ -1167,7 +1167,7 @@ class BrowserRuntime:
     async def wait_for_fingerprint_change(
         self,
         previous_fingerprint: str,
-        timeout_ms: int = 5000,
+        timeout_ms: int = 3000,
     ) -> bool:
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         while asyncio.get_running_loop().time() < deadline:
@@ -1179,7 +1179,7 @@ class BrowserRuntime:
 
     async def _wait_for_answer_reveal(
         self,
-        timeout_ms: int = 1500,
+        timeout_ms: int = 800,
         target_selectors: list[str] | None = None,
     ) -> None:
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)

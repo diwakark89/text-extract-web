@@ -64,13 +64,13 @@ class RunConfig(BaseModel):
     workspace_dir: Path = Path(".")
     model: str = "gpt-5"
     orchestration_mode: Literal["hybrid_gap_fill", "llm_orchestrator", "deterministic_only"] = "hybrid_gap_fill"
-    max_records: int = 200
+    max_records: int = 1000
     max_turns: int = 800
     start_index: int = 1
     min_confidence: float = 0.65
     min_quality_score: float = 0.72
     require_answers: bool = True
-    stop_on_missing_answers: bool = True
+    stop_on_missing_answers: bool = False
     resume: bool = False
     auto_learn_profiles: bool = True
     max_consecutive_failures: int = 3
