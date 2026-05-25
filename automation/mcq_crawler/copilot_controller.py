@@ -75,6 +75,7 @@ ALLOWED_STOP_REASONS = {
     "max_records_reached",
     "turn_limit_reached",
     "user_requested_stop",
+    "answer_extraction_failed",
 }
 
 
@@ -90,6 +91,7 @@ class CopilotToolbox:
         min_quality_score: float,
         require_answers: bool,
         selector_debug: bool,
+        stop_on_missing_answers: bool = False,
         on_selector_learn: Callable[[str, str], None] | None = None,
     ) -> None:
         self.browser = browser
@@ -101,6 +103,7 @@ class CopilotToolbox:
         self.min_quality_score = min_quality_score
         self.require_answers = require_answers
         self.selector_debug = selector_debug
+        self.stop_on_missing_answers = stop_on_missing_answers
         self.on_selector_learn = on_selector_learn
 
     def build_tools(self) -> list[Tool]:
@@ -305,6 +308,12 @@ class CopilotToolbox:
         if not answers:
             missing_fields.append("answer")
 
+        non_question_candidate = self._looks_like_non_question_candidate(
+            question,
+            options,
+            used_selectors,
+        )
+
         if missing_fields:
             payload = {
                 "reason": "missing_extraction_fields",
@@ -332,6 +341,34 @@ class CopilotToolbox:
                         "used_selectors": used_selectors,
                     },
                 )
+
+            if non_question_candidate:
+                self.state.rejected_records += 1
+                self.state.validation_failures += 1
+                self.state.consecutive_failures += 1
+                self.state.current_page_skipped += 1
+                self.state.last_warning = "non_question_candidate"
+                return False, "Non-question candidate skipped.", payload
+
+            if self.stop_on_missing_answers and self.require_answers and "answer" in missing_fields:
+                self.state.rejected_records += 1
+                self.state.validation_failures += 1
+                self.state.consecutive_failures += 1
+                self.state.current_page_skipped += 1
+                self.state.last_warning = "answer_missing"
+                self.state.stop_reason = "answer_extraction_failed"
+                if self.selector_debug:
+                    self.store.append_debug_event(
+                        {
+                            "event": "run_stopped",
+                            "timestamp": payload["timestamp"],
+                            "reason": "answer_extraction_failed",
+                            "url": payload["url"],
+                            "question_preview": question[:180],
+                            "used_selectors": used_selectors,
+                        },
+                    )
+                return False, "Run stopped: required answers could not be extracted.", payload
 
         if not question or len(options) < 2:
             payload = {
@@ -420,6 +457,9 @@ class CopilotToolbox:
                         "used_selectors": used_selectors,
                     },
                 )
+            if self.stop_on_missing_answers and self.require_answers and "answers_required" in validation.errors:
+                self.state.last_warning = "answer_missing"
+                self.state.stop_reason = "answer_extraction_failed"
             self.state.rejected_records += 1
             self.state.validation_failures += 1
             self.state.consecutive_failures += 1
@@ -479,6 +519,38 @@ class CopilotToolbox:
             self.state.stop_reason = "max_records_reached"
 
         return True, "record saved", record.model_dump()
+
+    def _looks_like_non_question_candidate(
+        self,
+        question: str,
+        options: dict[str, str],
+        used_selectors: dict[str, str],
+    ) -> bool:
+        question_text = (question or "").strip().lower()
+        non_empty_options = [str(value or "").strip() for value in options.values() if str(value or "").strip()]
+
+        # Empty candidates usually indicate transient/noise DOM states, not a real MCQ.
+        if not question_text and not non_empty_options:
+            return True
+
+        if "choose how you want to study this exam" in question_text:
+            return True
+        if "about study modes" in question_text:
+            return True
+
+        question_selector = str(used_selectors.get("question") or "").strip().lower()
+        options_selector = str(used_selectors.get("options") or "").strip().lower()
+        if "mode-switcher" in question_selector:
+            return True
+        if "breadcrumb" in question_selector or "breadcrumb" in options_selector:
+            return True
+
+        option_values = [value.lower() for value in non_empty_options]
+        slashy_options = [value for value in option_values if value and "/" in value]
+        if len(slashy_options) >= 2:
+            return True
+
+        return False
 
     async def _open_url(self, invocation: ToolInvocation) -> ToolResult:
         args = _parse_args(OpenUrlArgs, invocation.arguments)

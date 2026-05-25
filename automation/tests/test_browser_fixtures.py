@@ -77,6 +77,38 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(candidates), 3)
 
+    async def test_extract_page_candidates_keeps_single_valid_container(self) -> None:
+        fixture = (
+            PROJECT_ROOT / "tests" / "fixtures" / "single_question_container_with_noise.html"
+        ).resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.runtime.state.selector_overrides["question_containers"] = ["div.exam-row"]
+        self.runtime.state.selector_overrides["question"] = [
+            ".question-content > p",
+            "p.mode-switcher-subtitle",
+        ]
+        self.runtime.state.selector_overrides["options"] = [
+            ".question-content .mc-question > ul > li.mc-option",
+            "li.Breadcrumb_item__ZND9U",
+        ]
+        self.runtime.state.selector_overrides["answer"] = [
+            ".question-content .mc-question li.mc-option.mc-option-missed",
+        ]
+
+        candidates = await self.runtime.extract_page_candidates(max_candidates=3)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertIn("stores files as objects", candidates[0].question)
+        self.assertEqual(
+            candidates[0].used_selectors.get("question"),
+            ".question-content > p",
+        )
+        self.assertEqual(
+            candidates[0].used_selectors.get("options"),
+            ".question-content .mc-question > ul > li.mc-option",
+        )
+
     async def test_reveal_answer_deduplicates_overlapping_selectors(self) -> None:
         fixture = (
             PROJECT_ROOT / "tests" / "fixtures" / "reveal_toggle_duplicate_selectors.html"
@@ -119,6 +151,12 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(await self.runtime.has_next_page())
 
+    async def test_has_next_page_false_for_numbered_previous_only(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "numbered_path_nav" / "3.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.assertFalse(await self.runtime.has_next_page())
+
     async def test_click_next_prefers_page_navigation_over_next_question(self) -> None:
         fixture = (PROJECT_ROOT / "tests" / "fixtures" / "pagination_signals.html").resolve().as_uri()
         await self.runtime.open_url(fixture)
@@ -134,6 +172,14 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
         clicked = await self.runtime.click_next()
         self.assertTrue(clicked)
         self.assertRegex(self.runtime.page.url, r"/numbered_path_nav/(2|3)\.html$")
+
+    async def test_click_next_ignores_numbered_previous_only_links(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "numbered_path_nav" / "3.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        clicked = await self.runtime.click_next()
+        self.assertFalse(clicked)
+        self.assertRegex(self.runtime.page.url, r"/numbered_path_nav/3\.html$")
 
 
 if __name__ == "__main__":

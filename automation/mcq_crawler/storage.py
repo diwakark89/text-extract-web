@@ -46,17 +46,52 @@ class JsonlStore:
             handle.write(line + "\n")
 
     def _append_json_array_item(self, path: Path, payload: dict) -> None:
-        existing: list[dict] = []
-        if path.exists():
-            try:
-                loaded = json.loads(path.read_text(encoding="utf-8"))
-                if isinstance(loaded, list):
-                    existing = [item for item in loaded if isinstance(item, dict)]
-            except json.JSONDecodeError:
-                existing = []
+        item_text = self._format_array_item(payload)
+        if not path.exists() or path.stat().st_size == 0:
+            path.write_text(f"[\n{item_text}\n]\n", encoding="utf-8")
+            return
 
-        existing.append(payload)
-        path.write_text(
-            json.dumps(existing, ensure_ascii=True, indent=2),
-            encoding="utf-8",
-        )
+        with path.open("r+b") as handle:
+            close_idx = self._previous_non_whitespace_index(handle, handle.seek(0, 2) - 1)
+            if close_idx is None:
+                path.write_text(f"[\n{item_text}\n]\n", encoding="utf-8")
+                return
+
+            handle.seek(close_idx)
+            close_char = handle.read(1)
+            if close_char != b"]":
+                path.write_text(f"[\n{item_text}\n]\n", encoding="utf-8")
+                return
+
+            previous_idx = self._previous_non_whitespace_index(handle, close_idx - 1)
+            if previous_idx is None:
+                path.write_text(f"[\n{item_text}\n]\n", encoding="utf-8")
+                return
+
+            handle.seek(previous_idx)
+            previous_char = handle.read(1)
+            if previous_char == b"[":
+                insertion = f"\n{item_text}\n]"
+            else:
+                insertion = f",\n{item_text}\n]"
+
+            handle.seek(close_idx)
+            handle.write(insertion.encode("utf-8"))
+            handle.truncate()
+
+    def _format_array_item(self, payload: dict) -> str:
+        item_json = json.dumps(payload, ensure_ascii=True, indent=2)
+        lines = item_json.splitlines()
+        return "\n".join(f"  {line}" for line in lines)
+
+    def _previous_non_whitespace_index(self, handle, index: int) -> int | None:
+        if index < 0:
+            return None
+
+        while index >= 0:
+            handle.seek(index)
+            value = handle.read(1)
+            if value and value not in b" \t\r\n":
+                return index
+            index -= 1
+        return None

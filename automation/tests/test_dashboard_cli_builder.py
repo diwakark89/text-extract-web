@@ -8,7 +8,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from dashboard.cli_builder import DashboardRunOptions, build_crawler_command
+from dashboard.cli_builder import (
+    DashboardRunOptions,
+    build_crawler_command,
+    resolve_records_output_path,
+)
 
 
 class DashboardCommandBuilderTests(unittest.TestCase):
@@ -24,6 +28,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             auto_login_timeout_seconds=55,
             selector_debug=True,
             require_answers=True,
+            stop_on_missing_answers=True,
             auto_learn_profiles=True,
             max_records=150,
             max_turns=500,
@@ -31,6 +36,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             min_confidence=0.7,
             min_quality_score=0.8,
             model="gpt-5",
+            records_output_name="records.jsonl",
         )
 
         command = build_crawler_command(PROJECT_ROOT, options)
@@ -51,7 +57,12 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("55", command)
         self.assertIn("--selector-debug", command)
         self.assertIn("--require-answers", command)
+        self.assertIn("--stop-on-missing-answers", command)
         self.assertIn("--auto-learn-profiles", command)
+        self.assertIn("--output", command)
+
+        output_value = command[command.index("--output") + 1]
+        self.assertEqual(output_value, str(resolve_records_output_path(PROJECT_ROOT, "records.jsonl")))
 
     def test_build_command_without_profile(self) -> None:
         options = DashboardRunOptions(
@@ -65,7 +76,9 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             auto_login_timeout_seconds=40,
             selector_debug=False,
             require_answers=False,
+            stop_on_missing_answers=False,
             auto_learn_profiles=False,
+            records_output_name="records.jsonl",
         )
 
         command = build_crawler_command(PROJECT_ROOT, options)
@@ -81,7 +94,12 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("40", command)
         self.assertIn("--no-selector-debug", command)
         self.assertIn("--allow-missing-answers", command)
+        self.assertIn("--continue-on-missing-answers", command)
         self.assertIn("--no-auto-learn-profiles", command)
+
+    def test_records_json_name_maps_to_jsonl_output_path(self) -> None:
+        resolved = resolve_records_output_path(PROJECT_ROOT, "records.json")
+        self.assertTrue(str(resolved).endswith(str(Path("output") / "records.jsonl")))
 
 
 if __name__ == "__main__":

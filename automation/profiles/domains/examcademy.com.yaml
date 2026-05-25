@@ -1,20 +1,17 @@
 question:
-- p.mode-switcher-subtitle
 - .question-content > p
+options:
+- .question-content .mc-question > ul > li.mc-option
+- .mc-question > ul > li.mc-option
+answer:
+- .question-content .mc-question li.mc-option.mc-option-missed
+- .question-content .mc-question li.mc-option[class*='correct']
+- .question-content .mc-question .correct-answer
 _meta:
   selector_success_counts:
     question:
-      .question-content > p: 29
-      p.mode-switcher-subtitle: 1
+      .question-content > p: 8
     options:
-      .question-content .mc-question > ul > li.mc-option: 1
-      li.mc-option: 28
-      li.Breadcrumb_item__ZND9U: 1
+      .question-content .mc-question > ul > li.mc-option: 8
     answer:
-      li.mc-option.mc-option-missed: 27
-options:
-- li.Breadcrumb_item__ZND9U
-- li.mc-option
-- .question-content .mc-question > ul > li.mc-option
-answer:
-- li.mc-option.mc-option-missed
+      .question-content .mc-question li.mc-option.mc-option-missed: 8

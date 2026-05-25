@@ -18,6 +18,7 @@ class DashboardRunOptions:
     min_confidence: float = 0.65
     min_quality_score: float = 0.72
     require_answers: bool = True
+    stop_on_missing_answers: bool = True
     auto_learn_profiles: bool = True
     selector_debug: bool = False
     model: str = "gpt-5"
@@ -25,15 +26,41 @@ class DashboardRunOptions:
     enable_auto_login: bool = False
     auth_file_path: str = "profiles/auth_hosts.yaml"
     auto_login_timeout_seconds: int = 40
+    records_output_name: str = "records.jsonl"
+
+
+def normalize_records_output_name(name: str) -> str:
+    base_name = Path((name or "").strip()).name
+    if not base_name:
+        return "records.jsonl"
+
+    candidate = Path(base_name)
+    suffix = candidate.suffix.lower()
+    if suffix == ".jsonl":
+        return candidate.name
+    if suffix == ".json":
+        return candidate.with_suffix(".jsonl").name
+    if suffix:
+        return candidate.with_suffix(".jsonl").name
+    return f"{candidate.name}.jsonl"
+
+
+def resolve_records_output_path(automation_dir: Path, name: str) -> Path:
+    normalized = normalize_records_output_name(name)
+    return (automation_dir / "output" / normalized).resolve()
 
 
 def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) -> list[str]:
     """Build the CLI command while keeping main.py as the execution engine."""
+    records_output_path = resolve_records_output_path(automation_dir, options.records_output_name)
+
     command = [
         sys.executable,
         str((automation_dir / "main.py").resolve()),
         "--start-url",
         options.start_url,
+        "--output",
+        str(records_output_path),
         "--model",
         options.model,
         "--orchestration-mode",
@@ -61,6 +88,11 @@ def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) ->
         "--auto-login-timeout-seconds",
         str(options.auto_login_timeout_seconds),
         "--require-answers" if options.require_answers else "--allow-missing-answers",
+        (
+            "--stop-on-missing-answers"
+            if options.stop_on_missing_answers
+            else "--continue-on-missing-answers"
+        ),
         "--auto-learn-profiles" if options.auto_learn_profiles else "--no-auto-learn-profiles",
         "--selector-debug" if options.selector_debug else "--no-selector-debug",
     ]

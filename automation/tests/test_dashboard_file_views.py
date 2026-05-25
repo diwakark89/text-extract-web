@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 import sys
 
@@ -118,6 +120,54 @@ class DashboardFileViewTests(unittest.TestCase):
             self.assertEqual(
                 migrated["profile_by_host"].get("examtopics.com"),
                 "C:/profiles/examtopics_like.yaml",
+            )
+
+    def test_moved_recent_urls_file_fallback_from_output_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output_dir = root / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            moved_file = root / "dashboard_recent_urls.json"
+            moved_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "recent_sites": [
+                            {
+                                "host": "examcademy.com",
+                                "last_url": "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1",
+                            }
+                        ],
+                        "profile_by_host": {},
+                    },
+                    ensure_ascii=True,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            urls = load_recent_urls(output_dir)
+            self.assertEqual(
+                urls[0],
+                "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1",
+            )
+
+    def test_recent_urls_env_override_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output_dir = root / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            custom_path = root / "custom" / "recent_urls.json"
+
+            with mock.patch.dict(os.environ, {"MCQ_DASHBOARD_RECENT_URLS_PATH": str(custom_path)}):
+                save_recent_url(output_dir, "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1")
+                urls = load_recent_urls(output_dir)
+
+            self.assertTrue(custom_path.exists())
+            self.assertEqual(
+                urls[0],
+                "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1",
             )
 
     def test_url_host_key_normalization(self) -> None:

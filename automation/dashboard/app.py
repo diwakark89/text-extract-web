@@ -8,7 +8,11 @@ import time
 
 import streamlit as st
 
-from dashboard.cli_builder import DashboardRunOptions, build_crawler_command
+from dashboard.cli_builder import (
+    DashboardRunOptions,
+    build_crawler_command,
+    resolve_records_output_path,
+)
 from dashboard.file_views import (
     list_yaml_profiles,
     load_profile_for_url,
@@ -176,7 +180,14 @@ def main() -> None:
     )
     selector_debug = st.sidebar.checkbox("Selector debug", value=False)
     require_answers = st.sidebar.checkbox("Require answers", value=True)
+    stop_on_missing_answers = st.sidebar.checkbox("Stop if answers missing", value=True)
     auto_learn_profiles = st.sidebar.checkbox("Auto learn profiles", value=True)
+    records_output_name = st.sidebar.text_input(
+        "Records file name",
+        value="records.jsonl",
+        help="Use .jsonl or .json. If .json is entered, crawler writes .jsonl and maintains a matching .json mirror.",
+    )
+    st.session_state.records_output_name = records_output_name.strip() or "records.jsonl"
 
     max_records = st.sidebar.number_input("Max records", min_value=1, max_value=5000, value=200)
     max_turns = st.sidebar.number_input("Max turns", min_value=10, max_value=10000, value=800)
@@ -215,8 +226,10 @@ def main() -> None:
                     min_confidence=float(min_confidence),
                     min_quality_score=float(min_quality_score),
                     require_answers=require_answers,
+                    stop_on_missing_answers=stop_on_missing_answers,
                     auto_learn_profiles=auto_learn_profiles,
                     selector_debug=selector_debug,
+                    records_output_name=(records_output_name.strip() or "records.jsonl"),
                     model=model.strip() or "gpt-5",
                     prompt_for_login_at_start=prompt_for_login_at_start,
                     enable_auto_login=enable_auto_login,
@@ -249,6 +262,10 @@ def main() -> None:
                             else "default profile logic"
                         ),
                         "max_records": options.max_records,
+                        "stop_on_missing_answers": options.stop_on_missing_answers,
+                        "records_output_path": str(
+                            resolve_records_output_path(AUTOMATION_DIR, options.records_output_name)
+                        ),
                         "prompt_for_login_at_start": options.prompt_for_login_at_start,
                         "enable_auto_login": options.enable_auto_login,
                         "auth_file_path": options.auth_file_path,
@@ -374,7 +391,16 @@ def main() -> None:
     st.subheader("Live process logs")
     st.text_area("stdout/stderr", value=render_log_text(), height=320)
 
-    records_path = OUTPUT_DIR / "records.jsonl"
+    default_records_path = resolve_records_output_path(
+        AUTOMATION_DIR,
+        str(st.session_state.get("records_output_name") or "records.jsonl"),
+    )
+    summary_records_path = (
+        Path(str(summary.get("records_output_path") or "").strip())
+        if isinstance(summary, dict) and str(summary.get("records_output_path") or "").strip()
+        else default_records_path
+    )
+    records_path = summary_records_path
     errors_path = OUTPUT_DIR / "errors.jsonl"
     debug_path = OUTPUT_DIR / "selector_debug.jsonl"
     tab_records, tab_errors, tab_debug, tab_checkpoint, tab_profiles = st.tabs(

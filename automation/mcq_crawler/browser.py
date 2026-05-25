@@ -53,6 +53,14 @@ def parse_answer_letters(answer_text: str) -> list[str]:
                 letters.append(letter)
             continue
 
+        # Support selectors that capture full option text like "D All upfront payment".
+        leading_label = re.match(r"^([A-J])[\).:\s-]+.+$", part)
+        if leading_label:
+            letter = leading_label.group(1)
+            if letter not in letters:
+                letters.append(letter)
+            continue
+
         compact = re.sub(r"[^A-J]", "", part)
         if compact and len(compact) <= 5:
             for letter in compact:
@@ -231,13 +239,13 @@ async def _extract_page_candidates_impl(
                         }
                     }
 
-                    if (roots.length < 2) {
+                    if (roots.length === 0) {
                         const panelRoots = Array.from(document.querySelectorAll("[role='tabpanel']"))
                             .filter((node) => clean(node.innerText).length > 0);
                         roots.splice(0, roots.length, ...panelRoots);
                     }
 
-                    if (roots.length < 2) {
+                    if (roots.length === 0) {
                         const fallbackRoots = Array.from(document.querySelectorAll(".tab-pane, .panel-body, article, section"))
                             .filter((node) => node.querySelectorAll("li").length >= 2 && clean(node.innerText).includes("?"));
                         roots.splice(0, roots.length, ...fallbackRoots);
@@ -428,6 +436,208 @@ class BrowserRuntime:
             "() => document.body ? document.body.innerText.toLowerCase() : ''",
         )
         return "captcha" in text or "i am not a robot" in text
+
+    async def ensure_browse_mode_ready(self) -> bool:
+                if self.page is None:
+                        raise RuntimeError("Browser page not initialized")
+
+                result = await self.page.evaluate(
+                        """
+                        ({ containerSelectors }) => {
+                            const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+                            const isVisible = (node) => {
+                                if (!node) return false;
+                                const style = window.getComputedStyle(node);
+                                if (style.display === "none" || style.visibility === "hidden") {
+                                    return false;
+                                }
+                                const rect = node.getBoundingClientRect();
+                                return rect.width > 0 && rect.height > 0;
+                            };
+
+                            const hasQuestionContainers = () => {
+                                for (const selector of containerSelectors || []) {
+                                    let nodes = [];
+                                    try {
+                                        nodes = Array.from(document.querySelectorAll(selector));
+                                    } catch {
+                                        continue;
+                                    }
+
+                                    for (const node of nodes) {
+                                        if (!isVisible(node)) continue;
+                                        const text = clean(node.innerText);
+                                        if (text.length < 20) continue;
+
+                                        const hasOptions = node.querySelectorAll("li").length >= 2;
+                                        const hasQuestionSignal = text.includes("?") || /\\bquestion\\b/i.test(text);
+                                        if (hasOptions && hasQuestionSignal) {
+                                            return true;
+                                        }
+                                    }
+                                }
+
+                                return false;
+                            };
+
+                            const modeSubtitle = document.querySelector("p.mode-switcher-subtitle");
+                            const questionsPresent = hasQuestionContainers();
+                            if (!modeSubtitle) {
+                                return {
+                                    clicked: false,
+                                    reason: "no_mode_switcher",
+                                    questionsPresent,
+                                };
+                            }
+
+                            if (questionsPresent) {
+                                return {
+                                    clicked: false,
+                                    reason: "questions_present",
+                                    questionsPresent,
+                                };
+                            }
+
+                            const candidates = Array.from(document.querySelectorAll("button.mode-btn, button"));
+                            const browseButton = candidates.find((node) => {
+                                const text = clean(node.innerText).toLowerCase();
+                                return text === "browse" || text === "browse mode" || text.startsWith("browse ");
+                            });
+
+                            if (!browseButton || !isVisible(browseButton)) {
+                                return {
+                                    clicked: false,
+                                    reason: "browse_missing",
+                                    questionsPresent,
+                                };
+                            }
+
+                            if (browseButton.hasAttribute("disabled")) {
+                                return {
+                                    clicked: false,
+                                    reason: "browse_disabled",
+                                    questionsPresent,
+                                };
+                            }
+
+                            const ariaDisabled = String(browseButton.getAttribute("aria-disabled") || "").toLowerCase();
+                            if (ariaDisabled === "true") {
+                                return {
+                                    clicked: false,
+                                    reason: "browse_disabled",
+                                    questionsPresent,
+                                };
+                            }
+
+                            const wasActive =
+                                browseButton.classList.contains("active") ||
+                                String(browseButton.getAttribute("aria-pressed") || "").toLowerCase() === "true";
+
+                            browseButton.click();
+
+                            return {
+                                clicked: true,
+                                reason: wasActive ? "browse_reclicked" : "browse_clicked",
+                                questionsPresent,
+                                wasActive,
+                            };
+                        }
+                        """,
+                        {
+                                "containerSelectors": self._selector_chain("question_containers"),
+                        },
+                )
+
+                if isinstance(result, dict):
+                        self.state.notes["last_mode_activation"] = result
+
+                clicked = bool(isinstance(result, dict) and result.get("clicked"))
+                if clicked:
+                        try:
+                                await self.page.wait_for_load_state("domcontentloaded", timeout=1800)
+                        except Exception:
+                                pass
+                        await asyncio.sleep(0.25)
+
+                return clicked
+
+    async def wait_for_exam_content_ready(self, timeout_ms: int = 4500) -> bool:
+                if self.page is None:
+                        raise RuntimeError("Browser page not initialized")
+
+                deadline = asyncio.get_running_loop().time() + (max(250, timeout_ms) / 1000)
+                latest_snapshot: dict[str, int] = {
+                        "question_count": 0,
+                        "option_count": 0,
+                        "answer_button_count": 0,
+                        "mode_subtitle_count": 0,
+                }
+
+                while asyncio.get_running_loop().time() < deadline:
+                        snapshot = await self.page.evaluate(
+                                """
+                                ({ questionSelectors, optionSelectors }) => {
+                                    const safeQuery = (selector) => {
+                                        try {
+                                            return Array.from(document.querySelectorAll(selector));
+                                        } catch {
+                                            return [];
+                                        }
+                                    };
+
+                                    const questionNodes = [];
+                                    for (const selector of questionSelectors || []) {
+                                        questionNodes.push(...safeQuery(selector));
+                                    }
+
+                                    const optionNodes = [];
+                                    for (const selector of optionSelectors || []) {
+                                        optionNodes.push(...safeQuery(selector));
+                                    }
+
+                                    const answerButtons = Array.from(document.querySelectorAll("button")).filter((node) => {
+                                        const text = String(node.innerText || "").trim().toLowerCase();
+                                        return text === "show answer" || text === "hide answer";
+                                    });
+
+                                    return {
+                                        question_count: questionNodes.length,
+                                        option_count: optionNodes.length,
+                                        answer_button_count: answerButtons.length,
+                                        mode_subtitle_count: document.querySelectorAll("p.mode-switcher-subtitle").length,
+                                    };
+                                }
+                                """,
+                                {
+                                        "questionSelectors": self._selector_chain("question"),
+                                        "optionSelectors": self._selector_chain("options"),
+                                },
+                        )
+
+                        if isinstance(snapshot, dict):
+                                latest_snapshot = {
+                                        "question_count": int(snapshot.get("question_count", 0) or 0),
+                                        "option_count": int(snapshot.get("option_count", 0) or 0),
+                                        "answer_button_count": int(snapshot.get("answer_button_count", 0) or 0),
+                                        "mode_subtitle_count": int(snapshot.get("mode_subtitle_count", 0) or 0),
+                                }
+
+                        has_questions = latest_snapshot["question_count"] >= 1 and latest_snapshot["option_count"] >= 2
+                        has_answer_controls = latest_snapshot["answer_button_count"] >= 1
+                        if has_questions and has_answer_controls:
+                                self.state.notes["last_content_wait"] = {
+                                        **latest_snapshot,
+                                        "ready": True,
+                                }
+                                return True
+
+                        await asyncio.sleep(0.2)
+
+                self.state.notes["last_content_wait"] = {
+                        **latest_snapshot,
+                        "ready": False,
+                }
+                return False
 
     async def reveal_answer(self) -> bool:
         if self.page is None:
@@ -684,7 +894,7 @@ class BrowserRuntime:
         for selector in selectors:
             try:
                 locator = self.page.locator(selector)
-                if await self._click_ranked_next_candidates(locator):
+                if await self._click_ranked_next_candidates(locator, min_score=0):
                     return True
             except Exception:
                 continue
@@ -705,34 +915,46 @@ class BrowserRuntime:
                 return true;
               };
 
-                            const normalizePath = (value) => String(value || "").trim().replace(/\/+$/, "");
+                            const normalizePath = (value) => String(value || "").trim().replace(/\\/+$/, "");
                             const currentPath = normalizePath(window.location.pathname || "");
 
-                            const isNumberedSiblingPath = (rawHref) => {
+                            const parseNumberedPath = (pathValue) => {
+                                const match = String(pathValue || "").match(/^(.*)\/(\d+)(?:\.[a-z0-9]+)?$/i);
+                                if (!match) {
+                                    return null;
+                                }
+                                return {
+                                    base: match[1],
+                                    number: Number.parseInt(match[2], 10),
+                                };
+                            };
+
+                            const currentNumbered = parseNumberedPath(currentPath);
+
+                            const numberedSiblingDirection = (rawHref) => {
                                 const hrefValue = String(rawHref || "").trim();
                                 if (!hrefValue || hrefValue.startsWith("#") || hrefValue.startsWith("javascript:")) {
-                                    return false;
+                                    return 0;
+                                }
+                                if (!currentNumbered) {
+                                    return 0;
                                 }
 
                                 try {
                                     const target = new URL(hrefValue, window.location.href);
                                     const targetPath = normalizePath(target.pathname || "");
-                                    if (!currentPath || !targetPath) {
-                                        return false;
+                                    if (!targetPath || targetPath === currentPath) {
+                                        return 0;
                                     }
 
-                                      const currentMatch = currentPath.match(/^(.*)\/(\d+)(?:\.[a-z0-9]+)?$/i);
-                                      const targetMatch = targetPath.match(/^(.*)\/(\d+)(?:\.[a-z0-9]+)?$/i);
-                                    if (!currentMatch || !targetMatch) {
-                                        return false;
-                                    }
-                                    if (currentMatch[1] !== targetMatch[1]) {
-                                        return false;
+                                    const targetNumbered = parseNumberedPath(targetPath);
+                                    if (!targetNumbered || targetNumbered.base !== currentNumbered.base) {
+                                        return 0;
                                     }
 
-                                    return targetPath !== currentPath;
+                                    return targetNumbered.number - currentNumbered.number;
                                 } catch {
-                                    return false;
+                                    return 0;
                                 }
                             };
 
@@ -770,7 +992,9 @@ class BrowserRuntime:
                                     const href = rawHref.toLowerCase();
                   const rel = String(node.getAttribute("rel") || "").trim().toLowerCase();
                   const ariaLabel = String(node.getAttribute("aria-label") || "").trim().toLowerCase();
-                                    const numberedSiblingSignal = isNumberedSiblingPath(rawHref);
+                                    const siblingDirection = numberedSiblingDirection(rawHref);
+                                    const numberedSiblingSignal = siblingDirection > 0;
+                                    const backwardSiblingSignal = siblingDirection < 0;
 
                   const pageSignal =
                                         /\\/view\\/\\d+\\/?$/.test(href) ||
@@ -787,7 +1011,15 @@ class BrowserRuntime:
                     href.includes("collapse_") ||
                     href.includes("answerq");
 
-                  if (pageSignal && !questionSignal) {
+                                    const previousSignal =
+                                        text.includes("previous") ||
+                                        text === "prev" ||
+                                        text.startsWith("prev ") ||
+                                        ariaLabel.includes("previous") ||
+                                        rel.includes("prev") ||
+                                        backwardSiblingSignal;
+
+                                    if (pageSignal && !questionSignal && !previousSignal) {
                     return true;
                   }
                 }
@@ -857,17 +1089,29 @@ class BrowserRuntime:
 
             target_path = _resolved_path(href_raw)
             target_match = re.match(r"^(.*)/(\d+)(?:\.[a-z0-9]+)?$", target_path) if target_path else None
+            sibling_direction = 0
+            if current_match and target_match and current_match.group(1) == target_match.group(1):
+                try:
+                    sibling_direction = int(target_match.group(2)) - int(current_match.group(2))
+                except ValueError:
+                    sibling_direction = 0
 
             score = 0
             if re.search(r"/view/\d+/?$", href):
                 score += 10
             if "/page-" in href or "page=" in href:
                 score += 7
-            if current_match and target_match and current_match.group(1) == target_match.group(1):
+            if sibling_direction > 0:
+                score += 10
+                if sibling_direction == 1:
+                    score += 3
+            elif sibling_direction < 0:
+                score -= 10
+            elif current_match and target_match and current_match.group(1) == target_match.group(1):
                 if target_path == current_path:
                     score -= 8
                 else:
-                    score += 8
+                    score += 4
             if "next questions" in text:
                 score += 6
             if "next page" in text:
@@ -876,6 +1120,10 @@ class BrowserRuntime:
                 score += 4
             if text == "next" or text.startswith("next "):
                 score += 2
+            if "previous" in text or text == "prev" or text.startswith("prev "):
+                score -= 8
+            if "prev" in rel:
+                score -= 8
             if re.search(r"\bnext question\b", text):
                 score -= 6
             if "collapse_" in href or "answerq" in href:

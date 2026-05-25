@@ -70,6 +70,7 @@ class RunConfig(BaseModel):
     min_confidence: float = 0.65
     min_quality_score: float = 0.72
     require_answers: bool = True
+    stop_on_missing_answers: bool = True
     resume: bool = False
     auto_learn_profiles: bool = True
     max_consecutive_failures: int = 3

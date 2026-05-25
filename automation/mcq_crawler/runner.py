@@ -128,9 +128,17 @@ class CrawlRunner:
                 requires_manual_prompt = True
 
             if requires_manual_prompt:
-                continue_run = await self._prompt_for_login_at_start(browser, state)
-                if not continue_run:
+                if self.config.headless:
+                    state.stop_reason = "login_required"
+                    state.last_warning = state.last_warning or "login_required"
+                    self.console.print(
+                        "[yellow]Login is required but run is headless. Stopping before extraction.[/yellow]",
+                    )
                     await self._save_checkpoint(browser, state, checkpoint_store)
+                else:
+                    continue_run = await self._prompt_for_login_at_start(browser, state)
+                    if not continue_run:
+                        await self._save_checkpoint(browser, state, checkpoint_store)
 
             toolbox = CopilotToolbox(
                 browser=browser,
@@ -140,6 +148,7 @@ class CrawlRunner:
                 min_confidence=self.config.min_confidence,
                 min_quality_score=self.config.min_quality_score,
                 require_answers=self.config.require_answers,
+                stop_on_missing_answers=self.config.stop_on_missing_answers,
                 selector_debug=self.config.selector_debug,
                 on_selector_learn=(
                     lambda key, selector: profile_store.record_selector_success(
@@ -299,6 +308,9 @@ class CrawlRunner:
                 if state.stop_reason:
                     break
 
+            await browser.wait_for_exam_content_ready(timeout_ms=5000)
+            await browser.ensure_browse_mode_ready()
+            await browser.wait_for_exam_content_ready(timeout_ms=2500)
             await browser.reveal_answer()
 
             current_url = browser.page.url if browser.page else state.current_url
@@ -330,11 +342,24 @@ class CrawlRunner:
                 previous_written = state.records_written
 
             if stale_turns >= 4:
-                self.console.print(
-                    "[yellow]No extraction progress after 4 deterministic turns. Requesting feedback.[/yellow]",
-                )
-                await self._manual_intervention(browser, state, profile_store)
-                stale_turns = 0
+                if self.config.headless:
+                    self.console.print(
+                        "[yellow]No extraction progress after 4 deterministic turns. Auto-advancing in headless mode.[/yellow]",
+                    )
+                    auto_advanced = await self._auto_advance_after_stale_progress(browser, state)
+                    stale_turns = 0
+                    if state.stop_reason:
+                        await self._save_checkpoint(browser, state, checkpoint_store)
+                        break
+                    if auto_advanced:
+                        await self._save_checkpoint(browser, state, checkpoint_store)
+                        continue
+                else:
+                    self.console.print(
+                        "[yellow]No extraction progress after 4 deterministic turns. Requesting feedback.[/yellow]",
+                    )
+                    await self._manual_intervention(browser, state, profile_store)
+                    stale_turns = 0
 
             await self._save_checkpoint(browser, state, checkpoint_store)
 
@@ -417,6 +442,9 @@ class CrawlRunner:
             used_selectors=candidate.used_selectors,
         )
         if saved:
+            return
+
+        if state.stop_reason:
             return
 
         if self.config.orchestration_mode != "hybrid_gap_fill":
@@ -604,6 +632,8 @@ class CrawlRunner:
         if browser.page is None:
             return True, False
 
+        target_after_login = self._normalized_url(state.current_url or self.config.start_url)
+
         auth_path = self.config.auth_file_path
         if not auth_path.is_absolute():
             auth_path = (self.config.workspace_dir / auth_path).resolve()
@@ -636,11 +666,39 @@ class CrawlRunner:
             await password_input.fill(host_auth.password, timeout=timeout_ms)
 
             before_submit_url = self._normalized_url(page.url)
+            submitted = False
             if host_auth.submit_selector:
-                submit_button = page.locator(host_auth.submit_selector).first
-                await submit_button.click(timeout=timeout_ms)
-            else:
+                try:
+                    submitted = bool(
+                        await username_input.evaluate(
+                            """
+                            (el, selector) => {
+                              const form = el && el.closest ? el.closest("form") : null;
+                              const scope = form || document;
+                              const button = scope.querySelector(selector);
+                              if (!button) return false;
+                              button.click();
+                              return true;
+                            }
+                            """,
+                            host_auth.submit_selector,
+                        ),
+                    )
+                except Exception:
+                    submitted = False
+
+                if not submitted:
+                    submit_button = page.locator(host_auth.submit_selector).first
+                    await submit_button.click(timeout=timeout_ms)
+                    submitted = True
+
+            if not submitted:
                 await password_input.press(host_auth.submit_key or "Enter")
+
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+            except Exception:
+                pass
 
             success = False
             if host_auth.success_selector:
@@ -651,26 +709,61 @@ class CrawlRunner:
                     )
                     success = True
                 except Exception:
-                    success = False
+                    success = await self._is_selector_visible(page, host_auth.success_selector)
 
-            if not success:
-                try:
-                    await page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
-                except Exception:
-                    pass
+            login_link_visible = await self._is_selector_visible(
+                page,
+                "a.login-btn, a[href*='/auth/login']",
+            )
 
+            if success and login_link_visible:
+                success = False
+
+            if not success and not host_auth.success_selector:
                 after_submit_url = self._normalized_url(page.url)
                 login_url_norm = self._normalized_url(host_auth.login_url or "")
                 username_still_visible = await self._is_selector_visible(page, host_auth.username_selector)
                 password_still_visible = await self._is_selector_visible(page, host_auth.password_selector)
+                login_link_visible = await self._is_selector_visible(
+                    page,
+                    "a.login-btn, a[href*='/auth/login']",
+                )
 
                 success = (
                     bool(after_submit_url)
                     and after_submit_url != before_submit_url
                     and (not login_url_norm or after_submit_url != login_url_norm)
-                ) or (not username_still_visible and not password_still_visible)
+                ) or (not username_still_visible and not password_still_visible and not login_link_visible)
+
+            if not success and self._is_auth_route(page.url if page else "") and target_after_login:
+                try:
+                    await browser.open_url(target_after_login)
+                    page = browser.page
+                except Exception:
+                    page = browser.page
+
+                if page is not None:
+                    login_link_visible = await self._is_selector_visible(
+                        page,
+                        "a.login-btn, a[href*='/auth/login']",
+                    )
+                    if host_auth.success_selector:
+                        success = await self._is_selector_visible(page, host_auth.success_selector)
+                        if success and login_link_visible:
+                            success = False
+                    else:
+                        username_still_visible = await self._is_selector_visible(page, host_auth.username_selector)
+                        password_still_visible = await self._is_selector_visible(page, host_auth.password_selector)
+                        success = not username_still_visible and not password_still_visible and not login_link_visible
 
             if success:
+                if self._is_auth_route(page.url if page else "") and target_after_login:
+                    try:
+                        await browser.open_url(target_after_login)
+                        page = browser.page
+                    except Exception:
+                        pass
+
                 if page.url:
                     state.current_url = page.url
                 state.last_warning = ""
@@ -702,6 +795,76 @@ class CrawlRunner:
         if not stripped:
             return ""
         return urldefrag(stripped)[0]
+
+    def _is_auth_route(self, url: str) -> bool:
+        normalized = self._normalized_url(url).lower()
+        if not normalized:
+            return True
+        return "/auth/login" in normalized or "/auth/callback" in normalized
+
+    async def _auto_advance_after_stale_progress(
+        self,
+        browser: BrowserRuntime,
+        state: RuntimeState,
+    ) -> bool:
+        has_next = await browser.has_next_page()
+        if not has_next:
+            state.stop_reason = "verified_no_next_page"
+            state.last_warning = "stale_auto_no_next_page"
+            state.notes["last_stale_action"] = {
+                "mode": "auto_headless",
+                "clicked": False,
+                "has_next_page": False,
+            }
+            return False
+
+        previous_url = self._normalized_url(browser.page.url if browser.page else state.current_url)
+
+        previous_fingerprint = ""
+        try:
+            previous_fingerprint = await browser.current_fingerprint()
+        except Exception:
+            previous_fingerprint = ""
+
+        clicked = await browser.click_next()
+        if not clicked:
+            state.consecutive_failures += 1
+            state.last_warning = "stale_auto_navigation_failed"
+            state.notes["last_stale_action"] = {
+                "mode": "auto_headless",
+                "clicked": False,
+                "has_next_page": has_next,
+            }
+            return False
+
+        moved = False
+        if not previous_fingerprint:
+            moved = True
+        else:
+            fingerprint_changed = await browser.wait_for_fingerprint_change(
+                previous_fingerprint=previous_fingerprint,
+                timeout_ms=7000,
+            )
+            current_url = self._normalized_url(browser.page.url if browser.page else state.current_url)
+            moved = bool(fingerprint_changed or (current_url and current_url != previous_url))
+
+        state.notes["last_stale_action"] = {
+            "mode": "auto_headless",
+            "clicked": True,
+            "moved": moved,
+        }
+
+        if moved:
+            state.consecutive_failures = 0
+            state.last_warning = "stale_auto_skip"
+            state.page_started_at_epoch = time.time()
+            if browser.page and browser.page.url:
+                state.current_url = browser.page.url
+            return True
+
+        state.consecutive_failures += 1
+        state.last_warning = "stale_auto_no_change"
+        return False
 
     async def _manual_intervention(
         self,

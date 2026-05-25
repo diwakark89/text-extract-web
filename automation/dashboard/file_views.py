@@ -1,14 +1,36 @@
 from __future__ import annotations
 
 import json
+import os
+from collections import deque
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 RECENT_URLS_FILE = "dashboard_recent_urls.json"
+RECENT_URLS_FILE_ENV = "MCQ_DASHBOARD_RECENT_URLS_PATH"
 RECENT_STORE_SCHEMA_VERSION = 1
 RECENT_SITES_KEY = "recent_sites"
 PROFILE_BY_HOST_KEY = "profile_by_host"
+
+
+def _recent_store_file(output_dir: Path) -> Path:
+    configured = str(os.getenv(RECENT_URLS_FILE_ENV, "") or "").strip()
+    if configured:
+        configured_path = Path(configured)
+        if not configured_path.is_absolute():
+            configured_path = (output_dir.parent / configured_path).resolve()
+        return configured_path
+
+    default_path = output_dir / RECENT_URLS_FILE
+    if default_path.exists():
+        return default_path
+
+    moved_path = output_dir.parent / RECENT_URLS_FILE
+    if moved_path.exists():
+        return moved_path
+
+    return default_path
 
 
 def _is_within_workspace(path: Path, workspace_root: Path) -> bool:
@@ -44,12 +66,18 @@ def read_jsonl_tail(file_path: Path, *, max_lines: int = 100) -> list[dict[str, 
     if not file_path.exists():
         return []
 
-    raw_lines = file_path.read_text(encoding="utf-8").splitlines()
     if max_lines > 0:
-        raw_lines = raw_lines[-max_lines:]
+        raw_lines = deque(maxlen=max_lines)
+        with file_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                raw_lines.append(line.rstrip("\n"))
+        lines_to_parse = list(raw_lines)
+    else:
+        with file_path.open("r", encoding="utf-8") as handle:
+            lines_to_parse = [line.rstrip("\n") for line in handle]
 
     parsed: list[dict[str, Any]] = []
-    for line in raw_lines:
+    for line in lines_to_parse:
         stripped = line.strip()
         if not stripped:
             continue
@@ -161,7 +189,7 @@ def _normalize_recent_store(raw: object, *, max_items: int) -> dict[str, Any]:
 
 
 def _load_recent_store(output_dir: Path, *, max_items: int = 20) -> dict[str, Any]:
-    file_path = output_dir / RECENT_URLS_FILE
+    file_path = _recent_store_file(output_dir)
     if not file_path.exists():
         return _empty_recent_store()
 
@@ -175,8 +203,8 @@ def _load_recent_store(output_dir: Path, *, max_items: int = 20) -> dict[str, An
 
 def _write_recent_store(output_dir: Path, store: dict[str, Any], *, max_items: int = 20) -> None:
     normalized = _normalize_recent_store(store, max_items=max_items)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    file_path = output_dir / RECENT_URLS_FILE
+    file_path = _recent_store_file(output_dir)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(
         json.dumps(normalized, ensure_ascii=True, indent=2),
         encoding="utf-8",

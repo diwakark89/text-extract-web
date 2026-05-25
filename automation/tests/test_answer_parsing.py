@@ -21,6 +21,9 @@ class MultiAnswerParsingTests(unittest.TestCase):
     def test_parse_and_connector(self) -> None:
         self.assertEqual(parse_answer_letters("B and D"), ["B", "D"])
 
+    def test_parse_leading_option_label_from_full_option_text(self) -> None:
+        self.assertEqual(parse_answer_letters("D All upfront payment"), ["D"])
+
     def test_select_single_question_option_block_from_over_collected_list(self) -> None:
         over_collected = [
             "A. Compute",

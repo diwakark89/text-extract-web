@@ -76,6 +76,60 @@ class SelectorDebugStorageTests(unittest.TestCase):
             self.assertIsInstance(errors_json, list)
             self.assertEqual(errors_json[0]["reason"], "validation_failed")
 
+    def test_records_json_mirror_appends_multiple_items(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            store = JsonlStore(
+                output_path=root / "records.jsonl",
+                error_path=root / "errors.jsonl",
+                debug_path=root / "selector_debug.jsonl",
+            )
+
+            first_record = MCQRecord(
+                index=1,
+                question="Q1",
+                options={"A": "A1", "B": "B1"},
+                correct_answers=["A"],
+                source_url="https://example.com/q1",
+                confidence=0.9,
+                quality_score=0.9,
+                fingerprint="fp1",
+            )
+            second_record = MCQRecord(
+                index=2,
+                question="Q2",
+                options={"A": "A2", "B": "B2"},
+                correct_answers=["B"],
+                source_url="https://example.com/q2",
+                confidence=0.9,
+                quality_score=0.9,
+                fingerprint="fp2",
+            )
+
+            store.append_record(first_record)
+            store.append_record(second_record)
+
+            records_json = json.loads((root / "records.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(records_json), 2)
+            self.assertEqual(records_json[0]["question"], "Q1")
+            self.assertEqual(records_json[1]["question"], "Q2")
+
+    def test_error_json_mirror_recovers_from_invalid_existing_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            store = JsonlStore(
+                output_path=root / "records.jsonl",
+                error_path=root / "errors.jsonl",
+                debug_path=root / "selector_debug.jsonl",
+            )
+
+            (root / "errors.json").write_text("not-valid-json", encoding="utf-8")
+            store.append_error({"reason": "timeout"})
+
+            errors_json = json.loads((root / "errors.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(errors_json), 1)
+            self.assertEqual(errors_json[0]["reason"], "timeout")
+
 
 if __name__ == "__main__":
     unittest.main()
