@@ -5,5 +5,5 @@ hosts:
     password_selector: "input[name='password']"
     submit_selector: "button[type='submit']"
     success_selector: "a[href*='/logout'], a[href*='/profile']"
-    username: "diwakark89"
-    password: "MgBV)py%Y4-8yF-"
+    username: "YOUR_USERNAME"
+    password: "YOUR_PASSWORD"

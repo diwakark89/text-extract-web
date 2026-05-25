@@ -81,7 +81,7 @@ class RunConfig(BaseModel):
     slow_mo_ms: int = 0
     prompt_for_login_at_start: bool = False
     enable_auto_login: bool = False
-    auth_file_path: Path = Path("profiles/auth_hosts.yaml")
+    auth_file_path: Path = Path("auth/auth_hosts.yaml")
     auto_login_timeout_seconds: int = 40
 
 

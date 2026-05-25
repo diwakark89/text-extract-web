@@ -6,5 +6,5 @@ automation/dashboard/__pycache__/*
 automation/mcq_crawler/__pycache__/*
 automation/output/*
 automation/automation/output/*
-automation/profiles/auth_hosts.yaml
+automation/auth/auth_hosts.yaml
 automation/__pycache__/main.cpython-313.pyc

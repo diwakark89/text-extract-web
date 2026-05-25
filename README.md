@@ -28,8 +28,8 @@ These defaults are configurable through CLI flags in `automation/main.py`.
 
 The crawler can optionally use a local host credential file for login-required sites:
 
-- Example template: `automation/profiles/auth_hosts.example.yaml`
-- Local file: `automation/profiles/auth_hosts.yaml` (gitignored)
+- Example template: `automation/auth/auth_hosts.example.yaml`
+- Local file: `automation/auth/auth_hosts.yaml` (gitignored)
 
 When enabled, crawler attempts auto-login first and falls back to manual continue flow if login is not confirmed.
 

@@ -86,8 +86,6 @@ Useful options:
 
 Ready profile for free-braindumps AWS CCP page:
 
-- `automation/profiles/free_braindumps_aws_ccp.yaml`
-- `automation/profiles/free_braindumps_aws_ccp_strict.yaml`
 - `automation/profiles/free_braindumps_aws_ccp_broad.yaml`
 
 Ready profile for Examcademy pages:

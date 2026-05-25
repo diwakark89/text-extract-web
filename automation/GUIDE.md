@@ -54,8 +54,6 @@ This project includes two ready templates:
 
 Domain-specific profile for your target page:
 
-- `automation/profiles/free_braindumps_aws_ccp.yaml`
-- `automation/profiles/free_braindumps_aws_ccp_strict.yaml`
 - `automation/profiles/free_braindumps_aws_ccp_broad.yaml`
 
 Examcademy profile:
@@ -72,8 +70,8 @@ Recommended run command for this domain:
 ```bash
 mcq-crawler run \
   --start-url "https://free-braindumps.com/amazon/free-aws-certified-cloud-practitioner-braindumps/page-14" \
-  --profile automation/profiles/free_braindumps_aws_ccp_strict.yaml \
-  --min-quality-score 0.80 \
+  --profile automation/profiles/free_braindumps_aws_ccp_broad.yaml \
+  --min-quality-score 0.75 \
   --require-answers
 ```
 
@@ -89,16 +87,6 @@ mcq-crawler run \
 ```
 
 Note: On Examcademy, `Show Answer` may redirect to login when unauthenticated. Keep `--prompt-for-login-at-start` enabled for strict answer-required runs.
-
-If the strict profile misses data because the page layout shifts, use broad mode:
-
-```bash
-mcq-crawler run \
-  --start-url "https://free-braindumps.com/amazon/free-aws-certified-cloud-practitioner-braindumps/page-14" \
-  --profile automation/profiles/free_braindumps_aws_ccp_broad.yaml \
-  --min-quality-score 0.75 \
-  --require-answers
-```
 
 Example run with a profile:
 
@@ -136,7 +124,7 @@ Useful flags:
 - `--require-answers / --allow-missing-answers`: enforce answer presence.
 - `--prompt-for-login-at-start / --no-prompt-for-login-at-start`: pause before crawl so you can log in manually.
 - `--auto-login / --no-auto-login`: attempt host-based login from an auth file before manual prompt.
-- `--auth-file`: local YAML path with host credential/selectors (default `profiles/auth_hosts.yaml`).
+- `--auth-file`: local YAML path with host credential/selectors (default `auth/auth_hosts.yaml`).
 - `--auto-login-timeout-seconds`: timeout budget for auto-login steps.
 - `--max-consecutive-failures`: intervention threshold.
 - `--selector-debug`: write selector match details per extracted question.
@@ -246,13 +234,14 @@ Dashboard equivalent:
 
 ## 11) Optional host-based auto login
 
-Create a local file from `profiles/auth_hosts.example.yaml`:
+Create a local file from `auth/auth_hosts.example.yaml`:
 
 ```bash
-cp profiles/auth_hosts.example.yaml profiles/auth_hosts.yaml
+cp auth/auth_hosts.example.yaml auth/auth_hosts.yaml
 ```
 
-Populate real credentials/selectors in `profiles/auth_hosts.yaml` (this file is gitignored).
+Populate real credentials/selectors in `auth/auth_hosts.yaml` (this file is gitignored).
+Legacy path `profiles/auth_hosts.yaml` is still supported temporarily for migration.
 
 Run with auto-login enabled:
 
@@ -261,7 +250,7 @@ mcq-crawler run \
   --start-url "https://www.examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/" \
   --profile profiles/examtopics_like.yaml \
   --auto-login \
-  --auth-file profiles/auth_hosts.yaml
+  --auth-file auth/auth_hosts.yaml
 ```
 
 Behavior:

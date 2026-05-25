@@ -1,0 +1,14 @@
+question:
+- '[role=''tabpanel''] > div > p:first-of-type'
+_meta:
+  selector_success_counts:
+    question:
+      '[role=''tabpanel''] > div > p:first-of-type': 4
+    options:
+      li: 4
+    answer:
+      '[role=''tabpanel''] > div p:has-text(''Answer(s):'')': 4
+options:
+- li
+answer:
+- '[role=''tabpanel''] > div p:has-text(''Answer(s):'')'

@@ -24,7 +24,7 @@ class DashboardRunOptions:
     model: str = "gpt-5"
     prompt_for_login_at_start: bool = False
     enable_auto_login: bool = False
-    auth_file_path: str = "profiles/auth_hosts.yaml"
+    auth_file_path: str = "auth/auth_hosts.yaml"
     auto_login_timeout_seconds: int = 40
     records_output_name: str = "records.jsonl"
 

@@ -49,6 +49,8 @@ Rules:
 
 INITIAL_WAIT_TIMEOUT_SECONDS = 240
 TURN_WAIT_TIMEOUT_SECONDS = 180
+DEFAULT_AUTH_FILE_PATH = Path("auth/auth_hosts.yaml")
+LEGACY_AUTH_FILE_PATH = Path("profiles/auth_hosts.yaml")
 
 
 class SessionWaiter:
@@ -634,9 +636,7 @@ class CrawlRunner:
 
         target_after_login = self._normalized_url(state.current_url or self.config.start_url)
 
-        auth_path = self.config.auth_file_path
-        if not auth_path.is_absolute():
-            auth_path = (self.config.workspace_dir / auth_path).resolve()
+        auth_path = self._resolve_auth_file_path()
 
         host_auth = load_host_auth_config(auth_path, browser.page.url or state.current_url)
         if host_auth is None:
@@ -780,6 +780,25 @@ class CrawlRunner:
             state.last_warning = "auto_login_error"
             self.console.print("[yellow]Auto-login failed due to runtime error. Falling back to manual continue.[/yellow]")
             return True, False
+
+    def _resolve_auth_file_path(self) -> Path:
+        auth_path = self.config.auth_file_path
+        if not auth_path.is_absolute():
+            auth_path = (self.config.workspace_dir / auth_path).resolve()
+
+        if auth_path.exists():
+            return auth_path
+
+        configured_path = Path(self.config.auth_file_path)
+        if configured_path == DEFAULT_AUTH_FILE_PATH:
+            legacy_path = (self.config.workspace_dir / LEGACY_AUTH_FILE_PATH).resolve()
+            if legacy_path.exists():
+                self.console.print(
+                    "[yellow]Using legacy auth file path profiles/auth_hosts.yaml; migrate to auth/auth_hosts.yaml.[/yellow]",
+                )
+                return legacy_path
+
+        return auth_path
 
     async def _is_selector_visible(self, page: Any, selector: str) -> bool:
         try:

@@ -2,11 +2,16 @@
   "schema_version": 1,
   "recent_sites": [
     {
+      "host": "free-braindumps.com",
+      "last_url": "https://free-braindumps.com/amazon/free-saa-c03-braindumps/page-2"
+    },
+    {
       "host": "examcademy.com",
       "last_url": "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1"
     }
   ],
   "profile_by_host": {
-    "examcademy.com": "C:\\DK_World\\IT\\MyProjects\\Skillify\\text-extract-web\\automation\\profiles\\examcademy_like.yaml"
+    "examcademy.com": "C:\\DK_World\\IT\\MyProjects\\Skillify\\text-extract-web\\automation\\profiles\\examcademy_like.yaml",
+    "free-braindumps.com": "C:\\DK_World\\IT\\MyProjects\\Skillify\\text-extract-web\\automation\\profiles\\free_braindumps_aws_ccp_broad.yaml"
   }
 }

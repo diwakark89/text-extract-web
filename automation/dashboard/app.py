@@ -4,9 +4,14 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import shlex
+import sys
 import time
 
 import streamlit as st
+
+AUTOMATION_DIR = Path(__file__).resolve().parents[1]
+if str(AUTOMATION_DIR) not in sys.path:
+    sys.path.insert(0, str(AUTOMATION_DIR))
 
 from dashboard.cli_builder import (
     DashboardRunOptions,
@@ -25,7 +30,6 @@ from dashboard.file_views import (
 )
 from dashboard.process_manager import DashboardProcessManager
 
-AUTOMATION_DIR = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = AUTOMATION_DIR / "output"
 BASE_PROFILES_DIR = AUTOMATION_DIR / "profiles"
 LEARNED_PROFILES_DIR = BASE_PROFILES_DIR / "domains"
@@ -168,7 +172,7 @@ def main() -> None:
     )
     auth_file_path = st.sidebar.text_input(
         "Auth file",
-        value="profiles/auth_hosts.yaml",
+        value="auth/auth_hosts.yaml",
         help="Path to local host auth YAML (kept out of git).",
     )
     auto_login_timeout_seconds = st.sidebar.number_input(
@@ -233,7 +237,7 @@ def main() -> None:
                     model=model.strip() or "gpt-5",
                     prompt_for_login_at_start=prompt_for_login_at_start,
                     enable_auto_login=enable_auto_login,
-                    auth_file_path=auth_file_path.strip() or "profiles/auth_hosts.yaml",
+                    auth_file_path=auth_file_path.strip() or "auth/auth_hosts.yaml",
                     auto_login_timeout_seconds=int(auto_login_timeout_seconds),
                 )
 

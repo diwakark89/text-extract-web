@@ -56,7 +56,7 @@ def run(
         help="Attempt host-based auto-login from auth file before manual prompt",
     ),
     auth_file: Path = typer.Option(
-        Path("profiles/auth_hosts.yaml"),
+        Path("auth/auth_hosts.yaml"),
         "--auth-file",
         help="Path to host credential and selector config YAML",
     ),
