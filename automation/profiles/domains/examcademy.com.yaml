@@ -10,8 +10,8 @@ answer:
 _meta:
   selector_success_counts:
     question:
-      .question-content > p: 368
+      .question-content > p: 744
     options:
-      .question-content .mc-question > ul > li.mc-option: 368
+      .question-content .mc-question > ul > li.mc-option: 744
     answer:
-      .question-content .mc-question li.mc-option.mc-option-missed: 368
+      .question-content .mc-question li.mc-option.mc-option-missed: 744

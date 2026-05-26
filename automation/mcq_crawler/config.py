@@ -66,6 +66,7 @@ class RunConfig(BaseModel):
     orchestration_mode: Literal["hybrid_gap_fill", "llm_orchestrator", "deterministic_only"] = "hybrid_gap_fill"
     max_records: int = 1000
     max_turns: int = 800
+    max_page_candidates: int = 80
     start_index: int = 1
     min_confidence: float = 0.65
     min_quality_score: float = 0.72

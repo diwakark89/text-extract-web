@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lazy Loaded 25 Questions Fixture</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      main {
+        padding: 16px;
+      }
+
+      .question-row {
+        border: 1px solid #d9d9d9;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 16px;
+        background: #fff;
+      }
+
+      .question-row p.question-text {
+        margin: 0 0 10px;
+      }
+
+      .question-row ol {
+        margin: 0 0 10px 22px;
+        padding: 0;
+      }
+
+      .question-row .answer {
+        color: #145214;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Lazy loaded question fixture</h1>
+      <div id="questions"></div>
+    </main>
+
+    <script>
+      (() => {
+        const totalQuestions = 25;
+        const initialBatch = 9;
+        const incrementalBatch = 8;
+        let renderedCount = 0;
+        const host = document.getElementById("questions");
+
+        const createQuestionRow = (index) => {
+          const row = document.createElement("div");
+          row.className = "question-row";
+          row.setAttribute("role", "tabpanel");
+          row.innerHTML = `
+            <p class="question-text">Lazy fixture question ${index}: Which option is correct?</p>
+            <ol class="rounded-list">
+              <li>A. Option A${index}</li>
+              <li>B. Option B${index}</li>
+              <li>C. Option C${index}</li>
+              <li>D. Option D${index}</li>
+            </ol>
+            <div class="answer"><p>Answer(s): B</p></div>
+          `;
+          return row;
+        };
+
+        const renderBatch = (batchSize) => {
+          const end = Math.min(totalQuestions, renderedCount + batchSize);
+          for (let i = renderedCount + 1; i <= end; i += 1) {
+            host.appendChild(createQuestionRow(i));
+          }
+          renderedCount = end;
+        };
+
+        const maybeRenderMore = () => {
+          if (renderedCount >= totalQuestions) {
+            return;
+          }
+
+          const currentBottom = window.scrollY + window.innerHeight;
+          const threshold = document.documentElement.scrollHeight - 120;
+          if (currentBottom >= threshold) {
+            renderBatch(incrementalBatch);
+          }
+        };
+
+        renderBatch(initialBatch);
+        window.addEventListener("scroll", maybeRenderMore, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

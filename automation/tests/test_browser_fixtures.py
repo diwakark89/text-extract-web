@@ -77,6 +77,15 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(candidates), 3)
 
+    async def test_extract_page_candidates_materializes_lazy_loaded_questions(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "lazy_loaded_25_questions.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        candidates = await self.runtime.extract_page_candidates()
+
+        self.assertEqual(len(candidates), 25)
+        self.assertIn("Lazy fixture question 25", candidates[-1].question)
+
     async def test_extract_page_candidates_keeps_single_valid_container(self) -> None:
         fixture = (
             PROJECT_ROOT / "tests" / "fixtures" / "single_question_container_with_noise.html"
@@ -180,6 +189,16 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
         clicked = await self.runtime.click_next()
         self.assertFalse(clicked)
         self.assertRegex(self.runtime.page.url, r"/numbered_path_nav/3\.html$")
+
+    async def test_click_next_ignores_off_scope_arrow_link(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "off_scope_only_next_arrow.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+        self.runtime.state.notes["crawl_scope_path_prefix"] = "/exams/amazon/aws-certified-solutions-architect-associate-saa-c03"
+
+        clicked = await self.runtime.click_next()
+
+        self.assertFalse(clicked)
+        self.assertRegex(self.runtime.page.url, r"/off_scope_only_next_arrow\.html$")
 
 
 if __name__ == "__main__":

@@ -71,6 +71,7 @@ PAGE_CANDIDATE_SOURCE_URL_KEY = "page_candidate_source_url"
 ALLOWED_STOP_REASONS = {
     "verified_no_next_page",
     "navigation_blocked",
+    "navigation_out_of_scope",
     "captcha_blocked",
     "max_records_reached",
     "turn_limit_reached",
@@ -582,7 +583,9 @@ class CopilotToolbox:
         queue = self._load_page_candidate_queue(current_url)
 
         if not queue:
-            page_candidates = await self.browser.extract_page_candidates()
+            page_candidates = await self.browser.extract_page_candidates(
+                max_candidates=self.browser.config.max_page_candidates,
+            )
             if len(page_candidates) >= 2:
                 queue = page_candidates
                 self.state.current_page_candidates_found = max(

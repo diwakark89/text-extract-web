@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import re
 import time
 from typing import Any
-from urllib.parse import urldefrag
+from urllib.parse import urldefrag, urlparse
 
 from rich.console import Console
 
@@ -102,6 +103,8 @@ class CrawlRunner:
 
         state.domain = domain_from_url(target_url)
         state.current_url = target_url
+        state.notes["crawl_scope_host"] = self._crawl_scope_host(target_url)
+        state.notes["crawl_scope_path_prefix"] = self._crawl_scope_path_prefix(target_url)
 
         selector_profile = profile_store.merge_with_domain(
             base_selector_profile,
@@ -293,6 +296,12 @@ class CrawlRunner:
         stale_turns = 0
         previous_written = state.records_written
 
+        scope_seed_url = state.current_url or self.config.start_url
+        if not state.notes.get("crawl_scope_host"):
+            state.notes["crawl_scope_host"] = self._crawl_scope_host(scope_seed_url)
+        if not state.notes.get("crawl_scope_path_prefix"):
+            state.notes["crawl_scope_path_prefix"] = self._crawl_scope_path_prefix(scope_seed_url)
+
         for turn in range(1, self.config.max_turns + 1):
             if state.stop_reason:
                 break
@@ -318,7 +327,9 @@ class CrawlRunner:
             current_url = browser.page.url if browser.page else state.current_url
             toolbox._start_page_tracking(current_url)
 
-            candidates = await browser.extract_page_candidates()
+            candidates = await browser.extract_page_candidates(
+                max_candidates=self.config.max_page_candidates,
+            )
             if not candidates:
                 single_candidate = await browser.extract_candidate()
                 candidates = [single_candidate]
@@ -409,6 +420,7 @@ class CrawlRunner:
                 "clicked": last_clicked,
                 "fingerprint_changed": last_fingerprint_changed,
                 "url_changed": last_url_changed,
+                "out_of_scope": False,
             }
 
             if not moved:
@@ -418,6 +430,15 @@ class CrawlRunner:
                 state.consecutive_failures += 1
                 state.last_warning = "navigation_no_change"
             else:
+                next_url = self._normalized_url(browser.page.url if browser.page else state.current_url)
+                out_of_scope = bool(next_url) and (not self._is_within_crawl_scope(next_url, state))
+                state.notes["last_navigation_decision"]["out_of_scope"] = out_of_scope
+                if out_of_scope:
+                    state.stop_reason = "navigation_out_of_scope"
+                    state.last_warning = "navigation_out_of_scope"
+                    state.current_url = next_url
+                    break
+
                 state.consecutive_failures = 0
                 state.last_warning = ""
                 state.page_started_at_epoch = time.time()
@@ -821,6 +842,59 @@ class CrawlRunner:
             return True
         return "/auth/login" in normalized or "/auth/callback" in normalized
 
+    def _crawl_scope_host(self, url: str) -> str:
+        normalized = self._normalized_url(url)
+        if not normalized:
+            return ""
+        return (urlparse(normalized).netloc or "").strip().lower()
+
+    def _crawl_scope_path_prefix(self, url: str) -> str:
+        normalized = self._normalized_url(url)
+        if not normalized:
+            return "/"
+
+        path = (urlparse(normalized).path or "").rstrip("/")
+        if not path:
+            return "/"
+
+        segments = [segment for segment in path.split("/") if segment]
+        if segments and re.search(r"\.[a-z0-9]+$", segments[-1], re.IGNORECASE):
+            segments = segments[:-1]
+        while segments and (
+            re.fullmatch(r"\d+", segments[-1])
+            or re.fullmatch(r"page-\d+", segments[-1], re.IGNORECASE)
+        ):
+            segments = segments[:-1]
+
+        if not segments:
+            return "/"
+
+        return f"/{'/'.join(segments)}"
+
+    def _is_within_crawl_scope(self, url: str, state: RuntimeState) -> bool:
+        normalized = self._normalized_url(url)
+        if not normalized:
+            return True
+
+        parsed = urlparse(normalized)
+        target_host = (parsed.netloc or "").strip().lower()
+        target_path = (parsed.path or "").rstrip("/") or "/"
+
+        scope_host = str(state.notes.get("crawl_scope_host") or "").strip().lower()
+        if scope_host and target_host and target_host != scope_host:
+            return False
+
+        scope_prefix = str(state.notes.get("crawl_scope_path_prefix") or "").strip()
+        if not scope_prefix or scope_prefix == "/":
+            return True
+
+        normalized_prefix = scope_prefix.rstrip("/").lower() or "/"
+        normalized_path = target_path.lower()
+        return (
+            normalized_path == normalized_prefix
+            or normalized_path.startswith(f"{normalized_prefix}/")
+        )
+
     async def _auto_advance_after_stale_progress(
         self,
         browser: BrowserRuntime,
@@ -874,6 +948,15 @@ class CrawlRunner:
         }
 
         if moved:
+            next_url = self._normalized_url(browser.page.url if browser.page else state.current_url)
+            out_of_scope = bool(next_url) and (not self._is_within_crawl_scope(next_url, state))
+            state.notes["last_stale_action"]["out_of_scope"] = out_of_scope
+            if out_of_scope:
+                state.stop_reason = "navigation_out_of_scope"
+                state.last_warning = "navigation_out_of_scope"
+                state.current_url = next_url
+                return False
+
             state.consecutive_failures = 0
             state.last_warning = "stale_auto_skip"
             state.page_started_at_epoch = time.time()

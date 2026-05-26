@@ -66,7 +66,7 @@ class _StubBrowser:
     async def reveal_answer(self) -> bool:
         return True
 
-    async def extract_page_candidates(self) -> list[ExtractionCandidate]:
+    async def extract_page_candidates(self, max_candidates: int = 20) -> list[ExtractionCandidate]:
         return [_sample_candidate()]
 
     async def extract_candidate(self) -> ExtractionCandidate:
@@ -207,6 +207,20 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(browser.click_calls, 1)
         self.assertEqual(state.records_written, 1)
         self.assertEqual(state.stop_reason, "turn_limit_reached")
+
+    async def test_navigation_out_of_scope_stops_run(self) -> None:
+        state, browser = await self._run_once(
+            has_next_page=False,
+            click_next_result=True,
+            fingerprint_changed=True,
+            next_url_after_click="https://www.examtopics.com/features/modes",
+        )
+
+        self.assertEqual(browser.click_calls, 1)
+        self.assertEqual(state.records_written, 1)
+        self.assertEqual(state.stop_reason, "navigation_out_of_scope")
+        self.assertEqual(state.current_url, "https://www.examtopics.com/features/modes")
+        self.assertTrue(state.notes.get("last_navigation_decision", {}).get("out_of_scope"))
 
     async def test_attempt_save_candidate_skips_hybrid_assist_when_stop_reason_set(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

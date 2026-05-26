@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlparse
 from playwright.async_api import (
     Browser,
     BrowserContext,
+    Error as PlaywrightError,
     Locator,
     Page,
     Playwright,
@@ -71,7 +72,7 @@ def parse_answer_letters(answer_text: str) -> list[str]:
 
 
 MAX_OPTIONS_PER_QUESTION = 8
-DEFAULT_MAX_PAGE_CANDIDATES = 20
+DEFAULT_MAX_PAGE_CANDIDATES = 80
 _OPTION_LABEL_RE = re.compile(r"^\s*([A-J])[\).:\s-]+")
 
 
@@ -146,208 +147,232 @@ def _select_single_question_option_block(option_texts: list[str]) -> list[str]:
     return []
 
 
+def _is_transient_page_evaluate_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    transient_markers = (
+        "execution context was destroyed",
+        "cannot find context with specified id",
+        "most likely because of a navigation",
+        "frame was detached",
+        "target closed",
+        "session closed",
+    )
+
+    return isinstance(exc, PlaywrightError) and any(marker in message for marker in transient_markers)
+
+
 async def _extract_page_candidates_impl(
     runtime: "BrowserRuntime",
     max_candidates: int = DEFAULT_MAX_PAGE_CANDIDATES,
 ) -> list[ExtractionCandidate]:
-        if runtime.page is None:
-                raise RuntimeError("Browser page not initialized")
+    if runtime.page is None:
+        raise RuntimeError("Browser page not initialized")
 
-        raw = await runtime.page.evaluate(
-                """
-                ({ containerSelectors, questionSelectors, optionSelectors, answerSelectors, maxCandidates }) => {
-                    const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
-                    const uniq = (items) => {
-                        const out = [];
-                        for (const item of items) {
-                            if (item && !out.includes(item)) out.push(item);
+    normalized_limit = max(1, int(max_candidates or DEFAULT_MAX_PAGE_CANDIDATES))
+    try:
+        await runtime._materialize_question_containers(max_candidates=normalized_limit)
+    except Exception:
+        # Extraction must still proceed even when materialization is not supported by a page.
+        runtime.state.notes["last_candidate_materialization"] = {
+            "error": "materialization_failed",
+            "target_count": normalized_limit,
+        }
+
+    raw = await runtime.page.evaluate(
+        """
+        ({ containerSelectors, questionSelectors, optionSelectors, answerSelectors, maxCandidates }) => {
+            const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+            const uniq = (items) => {
+                const out = [];
+                for (const item of items) {
+                    if (item && !out.includes(item)) out.push(item);
+                }
+                return out;
+            };
+
+            const firstText = (root, selectors) => {
+                for (const selector of selectors) {
+                    let nodes = [];
+                    try {
+                        nodes = Array.from(root.querySelectorAll(selector));
+                    } catch {
+                        continue;
+                    }
+                    for (const node of nodes) {
+                        const text = clean(node.innerText);
+                        if (text) {
+                            return { text, selector };
                         }
-                        return out;
-                    };
+                    }
+                }
+                return { text: "", selector: "" };
+            };
 
-                    const firstText = (root, selectors) => {
-                        for (const selector of selectors) {
-                            let nodes = [];
-                            try {
-                                nodes = Array.from(root.querySelectorAll(selector));
-                            } catch {
-                                continue;
-                            }
-                            for (const node of nodes) {
-                                const text = clean(node.innerText);
-                                if (text) {
-                                    return { text, selector };
-                                }
-                            }
+            const collectOptions = (root, selectors) => {
+                for (const selector of selectors) {
+                    let nodes = [];
+                    try {
+                        nodes = Array.from(root.querySelectorAll(selector));
+                    } catch {
+                        continue;
+                    }
+
+                    const options = [];
+                    for (const node of nodes) {
+                        if (node.matches("li")) {
+                            const text = clean(node.innerText);
+                            if (text) options.push(text);
+                            continue;
                         }
-                        return { text: "", selector: "" };
-                    };
 
-                    const collectOptions = (root, selectors) => {
-                        for (const selector of selectors) {
-                            let nodes = [];
-                            try {
-                                nodes = Array.from(root.querySelectorAll(selector));
-                            } catch {
-                                continue;
-                            }
-
-                            const options = [];
-                            for (const node of nodes) {
-                                if (node.matches("li")) {
-                                    const text = clean(node.innerText);
-                                    if (text) options.push(text);
-                                    continue;
-                                }
-
-                                const listItems = Array.from(node.querySelectorAll(":scope > li"));
-                                if (listItems.length > 0) {
-                                    for (const li of listItems) {
-                                        const text = clean(li.innerText);
-                                        if (text) options.push(text);
-                                    }
-                                    continue;
-                                }
-
-                                const text = clean(node.innerText);
+                        const listItems = Array.from(node.querySelectorAll(":scope > li"));
+                        if (listItems.length > 0) {
+                            for (const li of listItems) {
+                                const text = clean(li.innerText);
                                 if (text) options.push(text);
                             }
-
-                            const deduped = uniq(options);
-                            if (deduped.length >= 2) {
-                                return { items: deduped, selector };
-                            }
-                        }
-                        return { items: [], selector: "" };
-                    };
-
-                    const roots = [];
-                    const seen = new Set();
-
-                    for (const selector of containerSelectors || []) {
-                        try {
-                            const nodes = Array.from(document.querySelectorAll(selector));
-                            for (const node of nodes) {
-                                if (!node || seen.has(node)) continue;
-                                seen.add(node);
-                                if (clean(node.innerText).length > 0) {
-                                    roots.push(node);
-                                }
-                            }
-                        } catch {
-                            continue;
-                        }
-                    }
-
-                    if (roots.length === 0) {
-                        const panelRoots = Array.from(document.querySelectorAll("[role='tabpanel']"))
-                            .filter((node) => clean(node.innerText).length > 0);
-                        roots.splice(0, roots.length, ...panelRoots);
-                    }
-
-                    if (roots.length === 0) {
-                        const fallbackRoots = Array.from(document.querySelectorAll(".tab-pane, .panel-body, article, section"))
-                            .filter((node) => node.querySelectorAll("li").length >= 2 && clean(node.innerText).includes("?"));
-                        roots.splice(0, roots.length, ...fallbackRoots);
-                    }
-
-                    const results = [];
-                    for (const root of roots.slice(0, Math.max(1, maxCandidates))) {
-                        const question = firstText(root, questionSelectors);
-                        const options = collectOptions(root, optionSelectors);
-                        const answer = firstText(root, answerSelectors);
-
-                        if (!question.text || options.items.length < 2) {
                             continue;
                         }
 
-                        results.push({
-                            question: question.text,
-                            option_texts: options.items,
-                            answer_text: answer.text,
-                            used_selectors: {
-                                question: question.selector,
-                                options: options.selector,
-                                answer: answer.selector,
-                            },
-                        });
+                        const text = clean(node.innerText);
+                        if (text) options.push(text);
                     }
 
-                    return results;
+                    const deduped = uniq(options);
+                    if (deduped.length >= 2) {
+                        return { items: deduped, selector };
+                    }
                 }
-                """,
-                {
-                        "containerSelectors": runtime._selector_chain("question_containers"),
-                        "questionSelectors": runtime._selector_chain("question"),
-                        "optionSelectors": runtime._selector_chain("options"),
-                    "answerSelectors": runtime._answer_selector_chain(),
-                        "maxCandidates": max_candidates,
-                },
+                return { items: [], selector: "" };
+            };
+
+            const roots = [];
+            const seen = new Set();
+
+            for (const selector of containerSelectors || []) {
+                try {
+                    const nodes = Array.from(document.querySelectorAll(selector));
+                    for (const node of nodes) {
+                        if (!node || seen.has(node)) continue;
+                        seen.add(node);
+                        if (clean(node.innerText).length > 0) {
+                            roots.push(node);
+                        }
+                    }
+                } catch {
+                    continue;
+                }
+            }
+
+            if (roots.length === 0) {
+                const panelRoots = Array.from(document.querySelectorAll("[role='tabpanel']"))
+                    .filter((node) => clean(node.innerText).length > 0);
+                roots.splice(0, roots.length, ...panelRoots);
+            }
+
+            if (roots.length === 0) {
+                const fallbackRoots = Array.from(document.querySelectorAll(".tab-pane, .panel-body, article, section"))
+                    .filter((node) => node.querySelectorAll("li").length >= 2 && clean(node.innerText).includes("?"));
+                roots.splice(0, roots.length, ...fallbackRoots);
+            }
+
+            const results = [];
+            for (const root of roots.slice(0, Math.max(1, maxCandidates))) {
+                const question = firstText(root, questionSelectors);
+                const options = collectOptions(root, optionSelectors);
+                const answer = firstText(root, answerSelectors);
+
+                if (!question.text || options.items.length < 2) {
+                    continue;
+                }
+
+                results.push({
+                    question: question.text,
+                    option_texts: options.items,
+                    answer_text: answer.text,
+                    used_selectors: {
+                        question: question.selector,
+                        options: options.selector,
+                        answer: answer.selector,
+                    },
+                });
+            }
+
+            return results;
+        }
+        """,
+        {
+            "containerSelectors": runtime._selector_chain("question_containers"),
+            "questionSelectors": runtime._selector_chain("question"),
+            "optionSelectors": runtime._selector_chain("options"),
+            "answerSelectors": runtime._answer_selector_chain(),
+            "maxCandidates": normalized_limit,
+        },
+    )
+
+    candidates: list[ExtractionCandidate] = []
+    if not isinstance(raw, list):
+        return candidates
+
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+
+        question = _clean_text(str(item.get("question", "")))
+        option_values = item.get("option_texts")
+        if not isinstance(option_values, list):
+            continue
+
+        option_texts = [_clean_text(str(value)) for value in option_values if _clean_text(str(value))]
+        if len(option_texts) < 2:
+            continue
+
+        answer_text = _clean_text(str(item.get("answer_text", "")))
+        used_selectors_raw = item.get("used_selectors")
+        used_selectors: dict[str, str] = {}
+        if isinstance(used_selectors_raw, dict):
+            for key in ("question", "options", "answer"):
+                value = used_selectors_raw.get(key)
+                if isinstance(value, str) and value.strip():
+                    used_selectors[key] = value.strip()
+
+        warnings: list[str] = []
+        score = 0.0
+        if question:
+            score += 0.45
+        else:
+            warnings.append("question_missing")
+
+        if len(option_texts) >= 2:
+            score += 0.35
+        else:
+            warnings.append("insufficient_options")
+
+        if answer_text:
+            score += 0.2
+        else:
+            warnings.append("answer_missing")
+
+        quality_score = score
+        if len(option_texts) >= 4:
+            quality_score += 0.05
+        if question and len(question) >= 20:
+            quality_score += 0.03
+        quality_score = min(1.0, round(quality_score, 3))
+
+        candidates.append(
+            ExtractionCandidate(
+                question=question,
+                option_texts=option_texts,
+                answer_text=answer_text,
+                confidence=round(score, 3),
+                quality_score=quality_score,
+                warnings=warnings,
+                used_selectors=used_selectors,
+            ),
         )
 
-        candidates: list[ExtractionCandidate] = []
-        if not isinstance(raw, list):
-                return candidates
-
-        for item in raw:
-                if not isinstance(item, dict):
-                        continue
-
-                question = _clean_text(str(item.get("question", "")))
-                option_values = item.get("option_texts")
-                if not isinstance(option_values, list):
-                        continue
-
-                option_texts = [_clean_text(str(value)) for value in option_values if _clean_text(str(value))]
-                if len(option_texts) < 2:
-                        continue
-
-                answer_text = _clean_text(str(item.get("answer_text", "")))
-                used_selectors_raw = item.get("used_selectors")
-                used_selectors: dict[str, str] = {}
-                if isinstance(used_selectors_raw, dict):
-                        for key in ("question", "options", "answer"):
-                                value = used_selectors_raw.get(key)
-                                if isinstance(value, str) and value.strip():
-                                        used_selectors[key] = value.strip()
-
-                warnings: list[str] = []
-                score = 0.0
-                if question:
-                        score += 0.45
-                else:
-                        warnings.append("question_missing")
-
-                if len(option_texts) >= 2:
-                        score += 0.35
-                else:
-                        warnings.append("insufficient_options")
-
-                if answer_text:
-                        score += 0.2
-                else:
-                        warnings.append("answer_missing")
-
-                quality_score = score
-                if len(option_texts) >= 4:
-                        quality_score += 0.05
-                if question and len(question) >= 20:
-                        quality_score += 0.03
-                quality_score = min(1.0, round(quality_score, 3))
-
-                candidates.append(
-                        ExtractionCandidate(
-                                question=question,
-                                option_texts=option_texts,
-                                answer_text=answer_text,
-                                confidence=round(score, 3),
-                                quality_score=quality_score,
-                                warnings=warnings,
-                                used_selectors=used_selectors,
-                        ),
-                )
-
-        return candidates
+    return candidates
 
 
 class BrowserRuntime:
@@ -572,47 +597,55 @@ class BrowserRuntime:
             "answer_button_count": 0,
             "mode_subtitle_count": 0,
         }
+        transient_errors = 0
 
         while asyncio.get_running_loop().time() < deadline:
-            snapshot = await self.page.evaluate(
-                """
-                ({ questionSelectors, optionSelectors }) => {
-                    const safeQuery = (selector) => {
-                        try {
-                            return Array.from(document.querySelectorAll(selector));
-                        } catch {
-                            return [];
+            try:
+                snapshot = await self.page.evaluate(
+                    """
+                    ({ questionSelectors, optionSelectors }) => {
+                        const safeQuery = (selector) => {
+                            try {
+                                return Array.from(document.querySelectorAll(selector));
+                            } catch {
+                                return [];
+                            }
+                        };
+
+                        const questionNodes = [];
+                        for (const selector of questionSelectors || []) {
+                            questionNodes.push(...safeQuery(selector));
                         }
-                    };
 
-                    const questionNodes = [];
-                    for (const selector of questionSelectors || []) {
-                        questionNodes.push(...safeQuery(selector));
+                        const optionNodes = [];
+                        for (const selector of optionSelectors || []) {
+                            optionNodes.push(...safeQuery(selector));
+                        }
+
+                        const answerButtons = Array.from(document.querySelectorAll("button")).filter((node) => {
+                            const text = String(node.innerText || "").trim().toLowerCase();
+                            return text === "show answer" || text === "hide answer";
+                        });
+
+                        return {
+                            question_count: questionNodes.length,
+                            option_count: optionNodes.length,
+                            answer_button_count: answerButtons.length,
+                            mode_subtitle_count: document.querySelectorAll("p.mode-switcher-subtitle").length,
+                        };
                     }
-
-                    const optionNodes = [];
-                    for (const selector of optionSelectors || []) {
-                        optionNodes.push(...safeQuery(selector));
-                    }
-
-                    const answerButtons = Array.from(document.querySelectorAll("button")).filter((node) => {
-                        const text = String(node.innerText || "").trim().toLowerCase();
-                        return text === "show answer" || text === "hide answer";
-                    });
-
-                    return {
-                        question_count: questionNodes.length,
-                        option_count: optionNodes.length,
-                        answer_button_count: answerButtons.length,
-                        mode_subtitle_count: document.querySelectorAll("p.mode-switcher-subtitle").length,
-                    };
-                }
-                """,
-                {
-                    "questionSelectors": self._selector_chain("question"),
-                    "optionSelectors": self._selector_chain("options"),
-                },
-            )
+                    """,
+                    {
+                        "questionSelectors": self._selector_chain("question"),
+                        "optionSelectors": self._selector_chain("options"),
+                    },
+                )
+            except Exception as exc:
+                if _is_transient_page_evaluate_error(exc):
+                    transient_errors += 1
+                    await asyncio.sleep(0.15)
+                    continue
+                raise
 
             if isinstance(snapshot, dict):
                 latest_snapshot = {
@@ -636,6 +669,7 @@ class BrowserRuntime:
         self.state.notes["last_content_wait"] = {
             **latest_snapshot,
             "ready": False,
+            "transient_errors": transient_errors,
         }
         return False
 
@@ -905,61 +939,9 @@ class BrowserRuntime:
         if self.page is None:
             raise RuntimeError("Browser page not initialized")
 
-        raw = await self.page.evaluate(
-            """
-            ({ configuredSelectors }) => {
-              const isVisible = (el) => {
-                if (!el) return false;
-                const style = window.getComputedStyle(el);
-                if (style.display === "none" || style.visibility === "hidden") return false;
-                return true;
-              };
-
-                            const normalizePath = (value) => String(value || "").trim().replace(new RegExp("/+$"), "");
-                            const currentPath = normalizePath(window.location.pathname || "");
-
-                            const parseNumberedPath = (pathValue) => {
-                                const match = String(pathValue || "").match(new RegExp("^(.*)/(\\d+)(?:\\.[a-z0-9]+)?$", "i"));
-                                if (!match) {
-                                    return null;
-                                }
-                                return {
-                                    base: match[1],
-                                    number: Number.parseInt(match[2], 10),
-                                };
-                            };
-
-                            const currentNumbered = parseNumberedPath(currentPath);
-
-                            const numberedSiblingDirection = (rawHref) => {
-                                const hrefValue = String(rawHref || "").trim();
-                                if (!hrefValue || hrefValue.startsWith("#") || hrefValue.startsWith("javascript:")) {
-                                    return 0;
-                                }
-                                if (!currentNumbered) {
-                                    return 0;
-                                }
-
-                                try {
-                                    const target = new URL(hrefValue, window.location.href);
-                                    const targetPath = normalizePath(target.pathname || "");
-                                    if (!targetPath || targetPath === currentPath) {
-                                        return 0;
-                                    }
-
-                                    const targetNumbered = parseNumberedPath(targetPath);
-                                    if (!targetNumbered || targetNumbered.base !== currentNumbered.base) {
-                                        return 0;
-                                    }
-
-                                    return targetNumbered.number - currentNumbered.number;
-                                } catch {
-                                    return 0;
-                                }
-                            };
-
-              const selectors = [
-                ...(configuredSelectors || []),
+        selectors = self._merge_selector_chains(
+            self._selector_chain("next_buttons"),
+            [
                 "a[rel='next']",
                 "a[href*='/page-']",
                 "a[href*='page=']",
@@ -967,75 +949,26 @@ class BrowserRuntime:
                 ".pager a",
                 "a",
                 "button",
-              ];
-
-              const seen = new Set();
-              for (const selector of selectors) {
-                let nodes = [];
-                try {
-                  nodes = Array.from(document.querySelectorAll(selector));
-                } catch {
-                  continue;
-                }
-
-                for (const node of nodes) {
-                  if (!node || seen.has(node)) continue;
-                  seen.add(node);
-
-                  if (!isVisible(node)) continue;
-                  if (node.hasAttribute("disabled")) continue;
-                  const ariaDisabled = String(node.getAttribute("aria-disabled") || "").toLowerCase();
-                  if (ariaDisabled === "true") continue;
-
-                  const text = String(node.innerText || "").replace(/\\s+/g, " ").trim().toLowerCase();
-                                    const rawHref = String(node.getAttribute("href") || "").trim();
-                                    const href = rawHref.toLowerCase();
-                  const rel = String(node.getAttribute("rel") || "").trim().toLowerCase();
-                  const ariaLabel = String(node.getAttribute("aria-label") || "").trim().toLowerCase();
-                                    const siblingDirection = numberedSiblingDirection(rawHref);
-                                    const numberedSiblingSignal = siblingDirection > 0;
-                                    const backwardSiblingSignal = siblingDirection < 0;
-
-                  const pageSignal =
-                                        /\\/view\\/\\d+\\/?$/.test(href) ||
-                    href.includes("/page-") ||
-                    href.includes("page=") ||
-                                        numberedSiblingSignal ||
-                    text.includes("next page") ||
-                                        text.includes("next questions") ||
-                    ariaLabel.includes("next page") ||
-                    rel.includes("next");
-
-                  const questionSignal =
-                                        /\\bnext question\\b/.test(text) ||
-                    href.includes("collapse_") ||
-                    href.includes("answerq");
-
-                                    const previousSignal =
-                                        text.includes("previous") ||
-                                        text === "prev" ||
-                                        text.startsWith("prev ") ||
-                                        ariaLabel.includes("previous") ||
-                                        rel.includes("prev") ||
-                                        backwardSiblingSignal;
-
-                                    if (pageSignal && !questionSignal && !previousSignal) {
-                    return true;
-                  }
-                }
-              }
-
-              return false;
-            }
-            """,
-            {
-                "configuredSelectors": self._selector_chain("next_buttons"),
-            },
+            ],
         )
 
-        return bool(raw)
+        for selector in selectors:
+            try:
+                locator = self.page.locator(selector)
+                if await self._click_ranked_next_candidates(locator, min_score=1, dry_run=True):
+                    return True
+            except Exception:
+                continue
 
-    async def _click_ranked_next_candidates(self, locator: Locator, *, min_score: int = -999) -> bool:
+        return False
+
+    async def _click_ranked_next_candidates(
+        self,
+        locator: Locator,
+        *,
+        min_score: int = -999,
+        dry_run: bool = False,
+    ) -> bool:
         count = await locator.count()
         if count == 0:
             return False
@@ -1043,6 +976,8 @@ class BrowserRuntime:
         current_url = self.page.url if self.page else ""
         current_path = (urlparse(current_url).path or "").rstrip("/").lower()
         current_match = re.match(r"^(.*)/(\d+)(?:\.[a-z0-9]+)?$", current_path) if current_path else None
+        scope_host = self._scope_host()
+        scope_prefix = self._scope_path_prefix().lower()
 
         def _resolved_path(raw_href: str) -> str:
             if not raw_href:
@@ -1050,6 +985,14 @@ class BrowserRuntime:
             try:
                 resolved = urljoin(current_url, raw_href)
                 return (urlparse(resolved).path or "").rstrip("/").lower()
+            except Exception:
+                return ""
+
+        def _resolved_url(raw_href: str) -> str:
+            if not raw_href:
+                return ""
+            try:
+                return urljoin(current_url, raw_href)
             except Exception:
                 return ""
 
@@ -1086,6 +1029,10 @@ class BrowserRuntime:
                 href_raw = ""
                 href = ""
                 rel = ""
+
+            resolved_url = _resolved_url(href_raw)
+            resolved = urlparse(resolved_url) if resolved_url else None
+            target_host = ((resolved.netloc if resolved else "") or "").strip().lower()
 
             target_path = _resolved_path(href_raw)
             target_match = re.match(r"^(.*)/(\d+)(?:\.[a-z0-9]+)?$", target_path) if target_path else None
@@ -1129,6 +1076,27 @@ class BrowserRuntime:
             if "collapse_" in href or "answerq" in href:
                 score -= 6
 
+            out_of_scope = False
+            if resolved_url and scope_host and target_host and target_host != scope_host:
+                out_of_scope = True
+
+            if resolved_url and scope_prefix and scope_prefix != "/":
+                normalized_target_path = target_path or "/"
+                in_scope_path = (
+                    normalized_target_path == scope_prefix
+                    or normalized_target_path.startswith(f"{scope_prefix}/")
+                )
+                if in_scope_path:
+                    score += 3
+                else:
+                    out_of_scope = True
+
+            if "/features/" in target_path:
+                out_of_scope = True
+
+            if out_of_scope:
+                continue
+
             ranked.append((score, index))
 
         if not ranked:
@@ -1138,6 +1106,8 @@ class BrowserRuntime:
         for score, index in ranked:
             if score < min_score:
                 continue
+            if dry_run:
+                return True
             candidate = locator.nth(index)
             try:
                 await candidate.click(timeout=1500)
@@ -1146,6 +1116,167 @@ class BrowserRuntime:
                 continue
 
         return False
+
+    def _scope_host(self) -> str:
+        configured_host = str(self.state.notes.get("crawl_scope_host") or "").strip().lower()
+        return configured_host
+
+    def _scope_path_prefix(self) -> str:
+        configured_prefix = str(self.state.notes.get("crawl_scope_path_prefix") or "").strip()
+        if configured_prefix:
+            normalized = configured_prefix.rstrip("/")
+            return normalized or "/"
+
+        return "/"
+
+    async def _materialize_question_containers(self, *, max_candidates: int) -> None:
+        if self.page is None:
+            raise RuntimeError("Browser page not initialized")
+
+        target_count = max(1, int(max_candidates or DEFAULT_MAX_PAGE_CANDIDATES))
+        max_passes = 8
+        stable_rounds = 0
+        previous_counts: tuple[int, int] | None = None
+        best_visible = 0
+        best_total = 0
+        last_snapshot: dict[str, int | bool] = {
+            "rootCount": 0,
+            "visibleRootCount": 0,
+            "didScroll": False,
+            "scrollY": 0,
+        }
+
+        for _ in range(max_passes):
+            try:
+                snapshot = await self.page.evaluate(
+                    """
+                    ({ containerSelectors, fallbackSelectors }) => {
+                      const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+                      const isVisible = (node) => {
+                        if (!node) return false;
+                        const style = window.getComputedStyle(node);
+                        if (style.display === "none" || style.visibility === "hidden") return false;
+                        const rect = node.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                      };
+
+                      const collectRoots = (selectors) => {
+                        const roots = [];
+                        const seen = new Set();
+                        for (const selector of selectors || []) {
+                          let nodes = [];
+                          try {
+                            nodes = Array.from(document.querySelectorAll(selector));
+                          } catch {
+                            continue;
+                          }
+
+                          for (const node of nodes) {
+                            if (!node || seen.has(node)) continue;
+                            seen.add(node);
+                            if (clean(node.innerText).length > 0) {
+                              roots.push(node);
+                            }
+                          }
+                        }
+                        return roots;
+                      };
+
+                      let roots = collectRoots(containerSelectors);
+                      if (roots.length === 0) {
+                        roots = collectRoots(fallbackSelectors);
+                      }
+
+                      const visibleRoots = roots.filter(isVisible);
+
+                      const beforeY = window.scrollY || 0;
+                      let didScroll = false;
+                      if (roots.length > 0) {
+                        const nextIndex = Math.min(
+                          roots.length - 1,
+                          Math.max(0, visibleRoots.length - 1),
+                        );
+                        const target = roots[nextIndex] || roots[roots.length - 1];
+                        if (target && typeof target.scrollIntoView === "function") {
+                          target.scrollIntoView({ block: "end", inline: "nearest" });
+                          didScroll = true;
+                        }
+                      } else {
+                        const delta = Math.max(300, Math.round(window.innerHeight * 0.75));
+                        window.scrollBy(0, delta);
+                        didScroll = true;
+                      }
+
+                      const afterY = window.scrollY || 0;
+
+                      return {
+                        rootCount: roots.length,
+                        visibleRootCount: visibleRoots.length,
+                        didScroll,
+                        scrollY: afterY,
+                        scrollDelta: Math.abs(afterY - beforeY),
+                      };
+                    }
+                    """,
+                    {
+                        "containerSelectors": self._selector_chain("question_containers"),
+                        "fallbackSelectors": ["[role='tabpanel']", ".tab-pane", ".panel-body", "article", "section"],
+                    },
+                )
+            except Exception as exc:
+                if _is_transient_page_evaluate_error(exc):
+                    await asyncio.sleep(0.2)
+                    continue
+                raise
+
+            if isinstance(snapshot, dict):
+                root_count = int(snapshot.get("rootCount", 0) or 0)
+                visible_count = int(snapshot.get("visibleRootCount", 0) or 0)
+                did_scroll = bool(snapshot.get("didScroll", False))
+                scroll_y = int(snapshot.get("scrollY", 0) or 0)
+                scroll_delta = int(snapshot.get("scrollDelta", 0) or 0)
+            else:
+                root_count = 0
+                visible_count = 0
+                did_scroll = False
+                scroll_y = 0
+                scroll_delta = 0
+
+            last_snapshot = {
+                "rootCount": root_count,
+                "visibleRootCount": visible_count,
+                "didScroll": did_scroll,
+                "scrollY": scroll_y,
+                "scrollDelta": scroll_delta,
+            }
+
+            best_visible = max(best_visible, visible_count)
+            best_total = max(best_total, root_count)
+
+            if visible_count >= target_count or root_count >= target_count:
+                break
+
+            current_counts = (root_count, visible_count)
+            if previous_counts == current_counts:
+                stable_rounds += 1
+            else:
+                stable_rounds = 0
+            previous_counts = current_counts
+
+            if stable_rounds >= 2:
+                break
+
+            if not did_scroll and scroll_delta == 0 and root_count == 0:
+                break
+
+            await asyncio.sleep(0.18)
+
+        self.state.notes["last_candidate_materialization"] = {
+            "target_count": target_count,
+            "best_visible_roots": best_visible,
+            "best_total_roots": best_total,
+            "final_snapshot": last_snapshot,
+        }
 
     async def current_fingerprint(self) -> str:
         if self.page is None:
