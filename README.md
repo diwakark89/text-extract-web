@@ -22,6 +22,12 @@ By default, crawler output is written under `automation/output/`:
 - Screenshots: `automation/output/screenshots/`
 - Selector debug (when enabled): `automation/output/selector_debug.jsonl`
 
+For large runs, records files split automatically after `300` questions per file
+by default (configurable via CLI):
+
+- `automation/output/records_1.jsonl`, `automation/output/records_2.jsonl`, ...
+- Matching JSON mirrors: `automation/output/records_1.json`, `automation/output/records_2.json`, ...
+
 These defaults are configurable through CLI flags in `automation/main.py`.
 
 ## Optional Host Auto Login (Crawler)

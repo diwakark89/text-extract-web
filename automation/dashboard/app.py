@@ -24,6 +24,7 @@ from dashboard.file_views import (
     load_recent_urls,
     read_checkpoint,
     read_jsonl_tail,
+    resolve_latest_records_jsonl_path,
     save_profile_for_url,
     save_recent_url,
     url_host_key,
@@ -201,6 +202,13 @@ def main() -> None:
     st.session_state.records_output_name = records_output_name.strip() or "records.jsonl"
 
     max_records = st.sidebar.number_input("Max records", min_value=1, max_value=5000, value=1000)
+    questions_per_file = st.sidebar.number_input(
+        "Questions per file",
+        min_value=1,
+        max_value=5000,
+        value=300,
+        help="Split records into numbered files after this many questions",
+    )
     max_turns = st.sidebar.number_input(
         "Max turns",
         min_value=10,
@@ -312,6 +320,7 @@ def main() -> None:
                 resume=resume,
                 headless=headless,
                 max_records=int(max_records),
+                questions_per_file=int(questions_per_file),
                 max_turns=committed_max_turns,
                 start_index=int(start_index),
                 min_confidence=float(min_confidence),
@@ -354,6 +363,7 @@ def main() -> None:
                         else "default profile logic"
                     ),
                     "max_records": options.max_records,
+                    "questions_per_file": options.questions_per_file,
                     "stop_on_missing_answers": options.stop_on_missing_answers,
                     "records_output_path": str(
                         resolve_records_output_path(AUTOMATION_DIR, options.records_output_name)
@@ -477,7 +487,7 @@ def main() -> None:
         if isinstance(summary, dict) and str(summary.get("records_output_path") or "").strip()
         else default_records_path
     )
-    records_path = summary_records_path
+    records_path = resolve_latest_records_jsonl_path(summary_records_path)
     errors_path = OUTPUT_DIR / "errors.jsonl"
     debug_path = OUTPUT_DIR / "selector_debug.jsonl"
     tab_records, tab_errors, tab_debug, tab_checkpoint, tab_profiles = st.tabs(

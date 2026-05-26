@@ -13,6 +13,7 @@ class DashboardRunOptions:
     resume: bool = False
     headless: bool = False
     max_records: int = 1000
+    questions_per_file: int = 300
     max_turns: int = 800
     start_index: int = 1
     min_confidence: float = 0.65
@@ -68,6 +69,8 @@ def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) ->
         options.orchestration_mode,
         "--max-records",
         str(options.max_records),
+        "--questions-per-file",
+        str(options.questions_per_file),
         "--max-turns",
         str(options.max_turns),
         "--start-index",

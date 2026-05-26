@@ -77,6 +77,7 @@ class RunConfig(BaseModel):
     max_consecutive_failures: int = 3
     navigation_retry_limit: int = 2
     max_llm_assists_per_page: int = 1
+    questions_per_file: int = Field(default=300, ge=1)
     selector_debug: bool = False
     headless: bool = False
     slow_mo_ms: int = 0

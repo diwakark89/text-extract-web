@@ -115,6 +115,8 @@ class CrawlRunner:
             self.config.output_path,
             self.config.error_path,
             debug_path=(self.config.debug_output_path if self.config.selector_debug else None),
+            questions_per_file=self.config.questions_per_file,
+            records_written=state.records_written,
         )
 
         self.config.workspace_dir.mkdir(parents=True, exist_ok=True)

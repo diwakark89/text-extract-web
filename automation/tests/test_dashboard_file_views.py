@@ -18,6 +18,7 @@ from dashboard.file_views import (
     load_recent_urls,
     read_checkpoint,
     read_jsonl_tail,
+    resolve_latest_records_jsonl_path,
     save_profile_for_url,
     save_recent_url,
     url_host_key,
@@ -196,6 +197,30 @@ class DashboardFileViewTests(unittest.TestCase):
             self.assertEqual(len(learned_profiles), 1)
             self.assertIsInstance(base_profiles[0], Path)
             self.assertIsInstance(learned_profiles[0], Path)
+
+    def test_resolve_latest_records_path_prefers_base_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            base_path = output_dir / "records.jsonl"
+            base_path.write_text('{"index": 1}\n', encoding="utf-8")
+            (output_dir / "records_1.jsonl").write_text('{"index": 1}\n', encoding="utf-8")
+            (output_dir / "records_2.jsonl").write_text('{"index": 2}\n', encoding="utf-8")
+
+            resolved = resolve_latest_records_jsonl_path(base_path)
+
+            self.assertEqual(resolved, base_path)
+
+    def test_resolve_latest_records_path_uses_highest_split_index(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            base_path = output_dir / "records.jsonl"
+            (output_dir / "records_1.jsonl").write_text('{"index": 1}\n', encoding="utf-8")
+            (output_dir / "records_2.jsonl").write_text('{"index": 2}\n', encoding="utf-8")
+            (output_dir / "records_alpha.jsonl").write_text('{"index": 99}\n', encoding="utf-8")
+
+            resolved = resolve_latest_records_jsonl_path(base_path)
+
+            self.assertEqual(resolved, output_dir / "records_2.jsonl")
 
 
 if __name__ == "__main__":

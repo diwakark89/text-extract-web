@@ -53,6 +53,12 @@ Dashboard capabilities:
   - `automation/output/records.jsonl` and `automation/output/records.json`
   - `automation/output/errors.jsonl` and `automation/output/errors.json`
 
+When records exceed the per-file limit (`--questions-per-file`, default `300`),
+records rotate into numbered files using `_1`, `_2`, `_3`, and so on:
+
+- `automation/output/records_1.jsonl`, `automation/output/records_2.jsonl`, ...
+- `automation/output/records_1.json`, `automation/output/records_2.json`, ...
+
 Model note:
 
 - If you see `Model "..." is not available`, choose a model available to your account in the dashboard Model field (for example `gpt-4.1`) and run again.
@@ -76,6 +82,7 @@ Useful options:
 - `--output` path to JSONL output.
 - `--headless/--no-headless` browser mode.
 - `--max-records` extraction cap.
+- `--questions-per-file` split records into multiple files after N questions (default `300`).
 - `--model` Copilot model, default `gpt-5`.
 - `--resume` resume from checkpoint file.
 - `--checkpoint` set checkpoint file path.

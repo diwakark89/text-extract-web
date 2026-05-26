@@ -92,6 +92,39 @@ def read_jsonl_tail(file_path: Path, *, max_lines: int = 100) -> list[dict[str, 
     return parsed
 
 
+def resolve_latest_records_jsonl_path(base_file_path: Path) -> Path:
+    if base_file_path.exists():
+        return base_file_path
+
+    parent = base_file_path.parent
+    if not parent.exists():
+        return base_file_path
+
+    stem = base_file_path.stem
+    suffix = base_file_path.suffix
+    pattern = f"{stem}_*{suffix}"
+
+    latest_path: Path | None = None
+    latest_index = -1
+
+    for candidate in parent.glob(pattern):
+        if not candidate.is_file():
+            continue
+        if not candidate.stem.startswith(f"{stem}_"):
+            continue
+
+        tail = candidate.stem[len(stem) + 1 :]
+        if not tail.isdigit():
+            continue
+
+        index = int(tail)
+        if index > latest_index:
+            latest_index = index
+            latest_path = candidate
+
+    return latest_path or base_file_path
+
+
 def read_checkpoint(file_path: Path) -> dict[str, Any]:
     if not file_path.exists():
         return {}

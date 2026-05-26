@@ -44,6 +44,12 @@ Output files:
 - Screenshots: `automation/output/screenshots/`
 - Selector debug log (optional): `automation/output/selector_debug.jsonl`
 
+If total saved records exceed `--questions-per-file` (default `300`), records
+are split into numbered files with matching JSON mirrors:
+
+- `automation/output/records_1.jsonl`, `automation/output/records_2.jsonl`, ...
+- `automation/output/records_1.json`, `automation/output/records_2.json`, ...
+
 ## 3) Use ready-made profiles
 
 This project includes two ready templates:
@@ -121,6 +127,7 @@ Useful flags:
 
 - `--min-confidence`: triggers stricter intervention when extraction confidence is low.
 - `--min-quality-score`: minimum score required to persist a record.
+- `--questions-per-file`: split records output after N questions per file (default `300`).
 - `--require-answers / --allow-missing-answers`: enforce answer presence.
 - `--prompt-for-login-at-start / --no-prompt-for-login-at-start`: pause before crawl so you can log in manually.
 - `--auto-login / --no-auto-login`: attempt host-based login from an auth file before manual prompt.

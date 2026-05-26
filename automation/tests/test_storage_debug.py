@@ -14,6 +14,19 @@ from mcq_crawler.storage import JsonlStore
 from mcq_crawler.models import MCQRecord
 
 
+def _build_record(index: int) -> MCQRecord:
+    return MCQRecord(
+        index=index,
+        question=f"Q{index}",
+        options={"A": "Option A", "B": "Option B"},
+        correct_answers=["A"],
+        source_url=f"https://example.com/q{index}",
+        confidence=0.9,
+        quality_score=0.9,
+        fingerprint=f"fp-{index}",
+    )
+
+
 class SelectorDebugStorageTests(unittest.TestCase):
     def test_append_debug_event_writes_jsonl_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -129,6 +142,105 @@ class SelectorDebugStorageTests(unittest.TestCase):
             errors_json = json.loads((root / "errors.json").read_text(encoding="utf-8"))
             self.assertEqual(len(errors_json), 1)
             self.assertEqual(errors_json[0]["reason"], "timeout")
+
+
+class SplitRecordsStorageTests(unittest.TestCase):
+    def test_under_limit_keeps_single_base_records_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            store = JsonlStore(
+                output_path=root / "records.jsonl",
+                error_path=root / "errors.jsonl",
+                debug_path=root / "selector_debug.jsonl",
+                questions_per_file=3,
+            )
+
+            for index in range(1, 4):
+                store.append_record(_build_record(index))
+
+            self.assertTrue((root / "records.jsonl").exists())
+            self.assertFalse((root / "records_1.jsonl").exists())
+
+            records_json = json.loads((root / "records.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(records_json), 3)
+
+    def test_crossing_limit_creates_numbered_records_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            store = JsonlStore(
+                output_path=root / "records.jsonl",
+                error_path=root / "errors.jsonl",
+                debug_path=root / "selector_debug.jsonl",
+                questions_per_file=3,
+            )
+
+            for index in range(1, 6):
+                store.append_record(_build_record(index))
+
+            self.assertFalse((root / "records.jsonl").exists())
+            self.assertTrue((root / "records_1.jsonl").exists())
+            self.assertTrue((root / "records_2.jsonl").exists())
+
+            first_lines = (root / "records_1.jsonl").read_text(encoding="utf-8").splitlines()
+            second_lines = (root / "records_2.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(first_lines), 3)
+            self.assertEqual(len(second_lines), 2)
+
+            first_json = json.loads((root / "records_1.json").read_text(encoding="utf-8"))
+            second_json = json.loads((root / "records_2.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(first_json), 3)
+            self.assertEqual(len(second_json), 2)
+
+    def test_resume_offset_continues_writing_in_expected_split_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output_path = root / "records.jsonl"
+            error_path = root / "errors.jsonl"
+
+            initial_store = JsonlStore(
+                output_path=output_path,
+                error_path=error_path,
+                questions_per_file=3,
+            )
+            for index in range(1, 6):
+                initial_store.append_record(_build_record(index))
+
+            resumed_store = JsonlStore(
+                output_path=output_path,
+                error_path=error_path,
+                questions_per_file=3,
+                records_written=5,
+            )
+            resumed_store.append_record(_build_record(6))
+            resumed_store.append_record(_build_record(7))
+
+            second_lines = (root / "records_2.jsonl").read_text(encoding="utf-8").splitlines()
+            third_lines = (root / "records_3.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(second_lines), 3)
+            self.assertEqual(len(third_lines), 1)
+
+    def test_errors_remain_unsplit_when_records_split(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            store = JsonlStore(
+                output_path=root / "records.jsonl",
+                error_path=root / "errors.jsonl",
+                questions_per_file=2,
+            )
+
+            for index in range(1, 4):
+                store.append_record(_build_record(index))
+
+            store.append_error({"reason": "validation_failed", "index": 1})
+            store.append_error({"reason": "parse_error", "index": 2})
+
+            self.assertTrue((root / "records_1.jsonl").exists())
+            self.assertTrue((root / "records_2.jsonl").exists())
+            self.assertTrue((root / "errors.jsonl").exists())
+            self.assertFalse((root / "errors_1.jsonl").exists())
+
+            errors_json = json.loads((root / "errors.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(errors_json), 2)
 
 
 if __name__ == "__main__":
