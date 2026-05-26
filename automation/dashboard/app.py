@@ -105,6 +105,8 @@ def main() -> None:
         st.session_state.selected_profile_path = remembered or ""
     if "profile_host_key" not in st.session_state:
         st.session_state.profile_host_key = url_host_key(st.session_state.start_url)
+    if "start_run_requested" not in st.session_state:
+        st.session_state.start_run_requested = 0
 
     st.sidebar.header("Run Controls")
     chosen_recent = st.sidebar.selectbox(
@@ -182,6 +184,11 @@ def main() -> None:
         value=40,
         step=1,
     )
+    humanize = st.sidebar.checkbox(
+        "Human-like crawl pacing",
+        value=False,
+        help="Use randomized pauses, reading delays, and natural click timing to reduce bot-like behavior.",
+    )
     selector_debug = st.sidebar.checkbox("Selector debug", value=False)
     require_answers = st.sidebar.checkbox("Require answers", value=True)
     stop_on_missing_answers = st.sidebar.checkbox("Stop if answers missing", value=False)
@@ -194,7 +201,13 @@ def main() -> None:
     st.session_state.records_output_name = records_output_name.strip() or "records.jsonl"
 
     max_records = st.sidebar.number_input("Max records", min_value=1, max_value=5000, value=1000)
-    max_turns = st.sidebar.number_input("Max turns", min_value=10, max_value=10000, value=800)
+    max_turns = st.sidebar.number_input(
+        "Max turns",
+        min_value=10,
+        max_value=10000,
+        value=800,
+        key="control_max_turns",
+    )
     start_index = st.sidebar.number_input("Start index", min_value=1, max_value=100000, value=1)
     min_confidence = st.sidebar.number_input("Min confidence", min_value=0.0, max_value=1.0, value=0.65, step=0.01)
     min_quality_score = st.sidebar.number_input("Min quality score", min_value=0.0, max_value=1.0, value=0.72, step=0.01)
@@ -204,9 +217,42 @@ def main() -> None:
         options=["hybrid_gap_fill", "deterministic_only", "llm_orchestrator"],
         index=0,
         help="hybrid_gap_fill uses deterministic crawling and invokes Copilot only on extraction gaps.",
+        key="control_orchestration_mode",
     )
     st.sidebar.caption(
         "Use a model available in your Copilot account (default: gpt-5.4)."
+    )
+
+    st.html(
+        """
+        <script>
+        (function () {
+            const parentDoc = window.parent && window.parent.document;
+            if (!parentDoc || parentDoc.__mcqStartRunBlurHookInstalled) {
+                return;
+            }
+            parentDoc.__mcqStartRunBlurHookInstalled = true;
+            parentDoc.addEventListener(
+                "pointerdown",
+                function (event) {
+                    const button = event.target && event.target.closest ? event.target.closest("button") : null;
+                    if (!button) {
+                        return;
+                    }
+                    const label = (button.innerText || "").trim().toLowerCase();
+                    if (label !== "start run") {
+                        return;
+                    }
+                    const active = parentDoc.activeElement;
+                    if (active && typeof active.blur === "function") {
+                        active.blur();
+                    }
+                },
+                true,
+            );
+        })();
+        </script>
+        """
     )
 
     run_col, stop_col, refresh_col = st.columns([1, 1, 1])
@@ -214,84 +260,8 @@ def main() -> None:
     with run_col:
         start_disabled = manager.is_running()
         if st.button("Start run", type="primary", use_container_width=True, disabled=start_disabled):
-            if not start_url.strip():
-                st.error("Start URL is required.")
-            else:
-                profile_path = str(selected_profile.resolve()) if selected_profile is not None else None
-
-                options = DashboardRunOptions(
-                    start_url=start_url.strip(),
-                    profile_path=profile_path,
-                    orchestration_mode=orchestration_mode,
-                    resume=resume,
-                    headless=headless,
-                    max_records=int(max_records),
-                    max_turns=int(max_turns),
-                    start_index=int(start_index),
-                    min_confidence=float(min_confidence),
-                    min_quality_score=float(min_quality_score),
-                    require_answers=require_answers,
-                    stop_on_missing_answers=stop_on_missing_answers,
-                    auto_learn_profiles=auto_learn_profiles,
-                    selector_debug=selector_debug,
-                    records_output_name=(records_output_name.strip() or "records.jsonl"),
-                    model=model.strip() or "gpt-5",
-                    prompt_for_login_at_start=prompt_for_login_at_start,
-                    enable_auto_login=enable_auto_login,
-                    auth_file_path=auth_file_path.strip() or "auth/auth_hosts.yaml",
-                    auto_login_timeout_seconds=int(auto_login_timeout_seconds),
-                )
-
-                # Avoid accidentally resuming into an old checkpoint URL when user entered a new URL.
-                resume_checkpoint = read_checkpoint(OUTPUT_DIR / "checkpoint.json")
-                checkpoint_current_url = str(resume_checkpoint.get("current_url") or "").strip()
-                if options.resume and checkpoint_current_url and checkpoint_current_url != options.start_url:
-                    options.resume = False
-                    st.warning(
-                        "Resume was disabled for this run because checkpoint URL differs from Start URL. "
-                        "Use the same URL as checkpoint if you want to continue that previous run."
-                    )
-
-                command = build_crawler_command(AUTOMATION_DIR, options)
-                ok, message = manager.start(command, cwd=AUTOMATION_DIR)
-                if ok:
-                    save_recent_url(OUTPUT_DIR, options.start_url)
-                    save_profile_for_url(OUTPUT_DIR, options.start_url, profile_path)
-                    st.session_state.profile_host_key = url_host_key(options.start_url)
-                    st.session_state.selected_profile_path = profile_path or ""
-                    st.session_state.last_run_summary = {
-                        "url": options.start_url,
-                        "profile": (
-                            profile_label(selected_profile)
-                            if selected_profile is not None
-                            else "default profile logic"
-                        ),
-                        "max_records": options.max_records,
-                        "stop_on_missing_answers": options.stop_on_missing_answers,
-                        "records_output_path": str(
-                            resolve_records_output_path(AUTOMATION_DIR, options.records_output_name)
-                        ),
-                        "prompt_for_login_at_start": options.prompt_for_login_at_start,
-                        "enable_auto_login": options.enable_auto_login,
-                        "auth_file_path": options.auth_file_path,
-                        "started_at": datetime.now(timezone.utc).isoformat(),
-                        "command": shlex.join(command),
-                        "stopped_at": "",
-                    }
-                    manager.add_local_log(f"Selected URL: {options.start_url}")
-                    manager.add_local_log(
-                        "Selected profile: "
-                        + (
-                            profile_label(selected_profile)
-                            if selected_profile is not None
-                            else "default profile logic"
-                        ),
-                    )
-                    st.success(message)
-                else:
-                    st.warning(message)
-
-                st.code(shlex.join(command), language="bash")
+            st.session_state.start_run_requested = 4
+            st.rerun()
 
     with stop_col:
         if st.button("Stop run", use_container_width=True):
@@ -308,6 +278,108 @@ def main() -> None:
         if st.button("Refresh now", use_container_width=True):
             manager.poll_logs()
             st.rerun()
+
+    pending_start = int(st.session_state.get("start_run_requested", 0) or 0)
+    if pending_start and not manager.is_running():
+        if pending_start > 1:
+            st.session_state.start_run_requested = pending_start - 1
+            st.rerun()
+
+        st.session_state.start_run_requested = 0
+
+        # Number/select widgets can lag a click in rapid UI interactions.
+        # Launch only after settle reruns and read committed session values.
+        committed_max_turns = int(st.session_state.get("control_max_turns", max_turns))
+        committed_orchestration_mode = str(
+            st.session_state.get("control_orchestration_mode", orchestration_mode),
+        )
+        if committed_orchestration_mode not in {
+            "hybrid_gap_fill",
+            "deterministic_only",
+            "llm_orchestrator",
+        }:
+            committed_orchestration_mode = orchestration_mode
+
+        if not start_url.strip():
+            st.error("Start URL is required.")
+        else:
+            profile_path = str(selected_profile.resolve()) if selected_profile is not None else None
+
+            options = DashboardRunOptions(
+                start_url=start_url.strip(),
+                profile_path=profile_path,
+                orchestration_mode=committed_orchestration_mode,
+                resume=resume,
+                headless=headless,
+                max_records=int(max_records),
+                max_turns=committed_max_turns,
+                start_index=int(start_index),
+                min_confidence=float(min_confidence),
+                min_quality_score=float(min_quality_score),
+                require_answers=require_answers,
+                stop_on_missing_answers=stop_on_missing_answers,
+                auto_learn_profiles=auto_learn_profiles,
+                selector_debug=selector_debug,
+                records_output_name=(records_output_name.strip() or "records.jsonl"),
+                model=model.strip() or "gpt-5",
+                prompt_for_login_at_start=prompt_for_login_at_start,
+                enable_auto_login=enable_auto_login,
+                auth_file_path=auth_file_path.strip() or "auth/auth_hosts.yaml",
+                auto_login_timeout_seconds=int(auto_login_timeout_seconds),
+                humanize=humanize,
+            )
+
+            # Avoid accidentally resuming into an old checkpoint URL when user entered a new URL.
+            resume_checkpoint = read_checkpoint(OUTPUT_DIR / "checkpoint.json")
+            checkpoint_current_url = str(resume_checkpoint.get("current_url") or "").strip()
+            if options.resume and checkpoint_current_url and checkpoint_current_url != options.start_url:
+                options.resume = False
+                st.warning(
+                    "Resume was disabled for this run because checkpoint URL differs from Start URL. "
+                    "Use the same URL as checkpoint if you want to continue that previous run."
+                )
+
+            command = build_crawler_command(AUTOMATION_DIR, options)
+            ok, message = manager.start(command, cwd=AUTOMATION_DIR)
+            if ok:
+                save_recent_url(OUTPUT_DIR, options.start_url)
+                save_profile_for_url(OUTPUT_DIR, options.start_url, profile_path)
+                st.session_state.profile_host_key = url_host_key(options.start_url)
+                st.session_state.selected_profile_path = profile_path or ""
+                st.session_state.last_run_summary = {
+                    "url": options.start_url,
+                    "profile": (
+                        profile_label(selected_profile)
+                        if selected_profile is not None
+                        else "default profile logic"
+                    ),
+                    "max_records": options.max_records,
+                    "stop_on_missing_answers": options.stop_on_missing_answers,
+                    "records_output_path": str(
+                        resolve_records_output_path(AUTOMATION_DIR, options.records_output_name)
+                    ),
+                    "prompt_for_login_at_start": options.prompt_for_login_at_start,
+                    "enable_auto_login": options.enable_auto_login,
+                    "auth_file_path": options.auth_file_path,
+                    "humanize": options.humanize,
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "command": shlex.join(command),
+                    "stopped_at": "",
+                }
+                manager.add_local_log(f"Selected URL: {options.start_url}")
+                manager.add_local_log(
+                    "Selected profile: "
+                    + (
+                        profile_label(selected_profile)
+                        if selected_profile is not None
+                        else "default profile logic"
+                    ),
+                )
+                st.success(message)
+            else:
+                st.warning(message)
+
+            st.code(shlex.join(command), language="bash")
 
     status = manager.status()
     code = manager.return_code()

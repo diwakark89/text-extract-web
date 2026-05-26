@@ -84,6 +84,15 @@ class RunConfig(BaseModel):
     enable_auto_login: bool = False
     auth_file_path: Path = Path("auth/auth_hosts.yaml")
     auto_login_timeout_seconds: int = 40
+    humanize: bool = False
+    human_delay_min_ms: int = 80
+    human_delay_max_ms: int = 360
+    human_read_pause_min_ms: int = 220
+    human_read_pause_max_ms: int = 850
+    human_idle_break_chance: float = 0.06
+    human_idle_break_min_ms: int = 650
+    human_idle_break_max_ms: int = 1500
+    human_mouse_move: bool = True
 
 
 def domain_from_url(url: str) -> str:

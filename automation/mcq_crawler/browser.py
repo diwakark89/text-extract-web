@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import random
 import re
-from typing import Iterable
+from typing import Any, Iterable
 from urllib.parse import urljoin, urlparse
 
 from playwright.async_api import (
@@ -579,6 +580,7 @@ class BrowserRuntime:
         self.config = config
         self.selector_profile = selector_profile
         self.state = state
+        self._rng = random.Random()
 
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
@@ -600,6 +602,7 @@ class BrowserRuntime:
         )
         self._context = await self._browser.new_context()
         self.page = await self._context.new_page()
+        self._ensure_humanization_notes()
 
     async def stop(self) -> None:
         if self._context is not None:
@@ -613,6 +616,7 @@ class BrowserRuntime:
         if self.page is None:
             raise RuntimeError("Browser page not initialized")
         await self.page.goto(url, wait_until="domcontentloaded")
+        await self.maybe_human_delay(reason="open_url_settle")
         return self.page.url
 
     async def page_context(self) -> dict:
@@ -1063,6 +1067,11 @@ class BrowserRuntime:
                     except Exception:
                         pass
 
+                    await self._maybe_humanize_locator_before_click(
+                        candidate,
+                        reason="reveal_answer",
+                    )
+
                     clicked = False
                     try:
                         await candidate.click(timeout=1500)
@@ -1304,6 +1313,10 @@ class BrowserRuntime:
                 return True
             candidate = locator.nth(index)
             try:
+                await self._maybe_humanize_locator_before_click(
+                    candidate,
+                    reason="next_navigation",
+                )
                 await candidate.click(timeout=1500)
                 return True
             except Exception:
@@ -1463,7 +1476,14 @@ class BrowserRuntime:
             if not did_scroll and scroll_delta == 0 and root_count == 0:
                 break
 
-            await asyncio.sleep(0.18)
+            if self.config.humanize:
+                await self._human_pause(
+                    min_ms=max(60, self.config.human_delay_min_ms),
+                    max_ms=max(140, self.config.human_delay_max_ms),
+                    reason="materialize_scroll",
+                )
+            else:
+                await asyncio.sleep(0.18)
 
         self.state.notes["last_candidate_materialization"] = {
             "target_count": target_count,
@@ -1759,6 +1779,103 @@ class BrowserRuntime:
             if stripped and stripped not in merged:
                 merged.append(stripped)
         return merged
+
+    def _ensure_humanization_notes(self) -> dict[str, Any]:
+        current = self.state.notes.get("humanization")
+        if not isinstance(current, dict):
+            current = {}
+
+        current["enabled"] = bool(self.config.humanize)
+        current.setdefault("pause_count", 0)
+        current.setdefault("total_pause_ms", 0)
+        current.setdefault("idle_breaks", 0)
+        current.setdefault("mouse_moves", 0)
+        current.setdefault("last_reason", "")
+        self.state.notes["humanization"] = current
+        return current
+
+    def _pause_window(self, *, min_ms: int, max_ms: int) -> tuple[int, int]:
+        lower = max(0, int(min_ms))
+        upper = max(lower, int(max_ms))
+        return lower, upper
+
+    async def _human_pause(self, *, min_ms: int, max_ms: int, reason: str) -> int:
+        lower, upper = self._pause_window(min_ms=min_ms, max_ms=max_ms)
+        if upper <= 0:
+            return 0
+
+        delay_ms = self._rng.randint(lower, upper)
+        if delay_ms <= 0:
+            return 0
+
+        await asyncio.sleep(delay_ms / 1000)
+
+        notes = self._ensure_humanization_notes()
+        notes["pause_count"] = int(notes.get("pause_count", 0) or 0) + 1
+        notes["total_pause_ms"] = int(notes.get("total_pause_ms", 0) or 0) + delay_ms
+        notes["last_reason"] = str(reason or "")
+        return delay_ms
+
+    async def maybe_human_delay(self, reason: str = "action") -> None:
+        if not self.config.humanize:
+            return
+
+        await self._human_pause(
+            min_ms=self.config.human_delay_min_ms,
+            max_ms=self.config.human_delay_max_ms,
+            reason=reason,
+        )
+
+    async def maybe_human_idle_break(self, reason: str = "idle_break") -> None:
+        if not self.config.humanize:
+            return
+
+        chance = min(1.0, max(0.0, float(self.config.human_idle_break_chance)))
+        if chance <= 0 or self._rng.random() >= chance:
+            return
+
+        notes = self._ensure_humanization_notes()
+        notes["idle_breaks"] = int(notes.get("idle_breaks", 0) or 0) + 1
+        await self._human_pause(
+            min_ms=self.config.human_idle_break_min_ms,
+            max_ms=self.config.human_idle_break_max_ms,
+            reason=reason,
+        )
+
+    async def maybe_human_read_pause(self, reason: str = "read_pause") -> None:
+        if not self.config.humanize:
+            return
+
+        await self._human_pause(
+            min_ms=self.config.human_read_pause_min_ms,
+            max_ms=self.config.human_read_pause_max_ms,
+            reason=reason,
+        )
+        await self.maybe_human_idle_break(reason=f"{reason}_idle")
+
+    async def _maybe_humanize_locator_before_click(self, locator: Locator, *, reason: str) -> None:
+        if not self.config.humanize or self.page is None:
+            return
+
+        if self.config.human_mouse_move:
+            try:
+                box = await locator.bounding_box()
+            except Exception:
+                box = None
+
+            if box:
+                try:
+                    x = float(box["x"]) + float(box["width"]) * self._rng.uniform(0.25, 0.75)
+                    y = float(box["y"]) + float(box["height"]) * self._rng.uniform(0.25, 0.75)
+                    steps = self._rng.randint(8, 20)
+                    await self.page.mouse.move(x, y, steps=steps)
+                    notes = self._ensure_humanization_notes()
+                    notes["mouse_moves"] = int(notes.get("mouse_moves", 0) or 0) + 1
+                    await self._human_pause(min_ms=20, max_ms=90, reason=f"{reason}_mouse_settle")
+                except Exception:
+                    pass
+
+        await self._human_pause(min_ms=45, max_ms=150, reason=f"{reason}_pre_click")
 
 
 BrowserRuntime.extract_page_candidates = _extract_page_candidates_impl

@@ -66,6 +66,11 @@ def run(
         "--auto-login-timeout-seconds",
         help="Timeout in seconds for auto-login steps",
     ),
+    humanize: bool = typer.Option(
+        False,
+        "--humanize/--no-humanize",
+        help="Use human-like pacing (random delays, reading pauses, mouse movement before clicks)",
+    ),
 ) -> None:
     config = RunConfig(
         start_url=start_url,
@@ -96,6 +101,7 @@ def run(
         enable_auto_login=enable_auto_login,
         auth_file_path=auth_file,
         auto_login_timeout_seconds=auto_login_timeout_seconds,
+        humanize=humanize,
     )
 
     summary = asyncio.run(run_crawl(config))

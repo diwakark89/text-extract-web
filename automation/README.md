@@ -83,6 +83,7 @@ Useful options:
 - `--require-answers/--allow-missing-answers` answer consistency policy.
 - `--auto-learn-profiles` persist selector learning into domain profile files.
 - `--selector-debug` write per-question selector match logs.
+- `--humanize/--no-humanize` enable or disable human-like pacing during crawl navigation.
 
 Ready profile for free-braindumps AWS CCP page:
 

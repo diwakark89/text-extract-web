@@ -319,10 +319,17 @@ class CrawlRunner:
                 if state.stop_reason:
                     break
 
+            if self.config.humanize:
+                await browser.maybe_human_delay(reason="turn_start")
+
             await browser.wait_for_exam_content_ready(timeout_ms=2500)
             await browser.ensure_browse_mode_ready()
             await browser.wait_for_exam_content_ready(timeout_ms=1000)
+            if self.config.humanize:
+                await browser.maybe_human_read_pause(reason="content_ready")
             await browser.reveal_answer()
+            if self.config.humanize:
+                await browser.maybe_human_delay(reason="post_reveal_extract")
 
             current_url = browser.page.url if browser.page else state.current_url
             toolbox._start_page_tracking(current_url)
@@ -403,6 +410,8 @@ class CrawlRunner:
             last_fingerprint_changed = False
             last_url_changed = False
             for _ in range(max(1, self.config.navigation_retry_limit)):
+                if self.config.humanize:
+                    await browser.maybe_human_delay(reason="before_next_click")
                 clicked = await browser.click_next()
                 last_clicked = clicked
                 if not clicked:
@@ -451,6 +460,8 @@ class CrawlRunner:
                 state.page_started_at_epoch = time.time()
                 if browser.page and browser.page.url:
                     state.current_url = browser.page.url
+                if self.config.humanize:
+                    await browser.maybe_human_read_pause(reason="post_navigation")
 
         if not state.stop_reason:
             state.stop_reason = "turn_limit_reached"
@@ -926,6 +937,9 @@ class CrawlRunner:
         except Exception:
             previous_fingerprint = ""
 
+        if self.config.humanize:
+            await browser.maybe_human_delay(reason="stale_auto_before_next")
+
         clicked = await browser.click_next()
         if not clicked:
             state.consecutive_failures += 1
@@ -969,6 +983,8 @@ class CrawlRunner:
             state.page_started_at_epoch = time.time()
             if browser.page and browser.page.url:
                 state.current_url = browser.page.url
+            if self.config.humanize:
+                await browser.maybe_human_read_pause(reason="stale_auto_post_navigation")
             return True
 
         state.consecutive_failures += 1

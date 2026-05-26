@@ -26,6 +26,7 @@ class DashboardRunOptions:
     enable_auto_login: bool = False
     auth_file_path: str = "auth/auth_hosts.yaml"
     auto_login_timeout_seconds: int = 40
+    humanize: bool = False
     records_output_name: str = "records.jsonl"
 
 
@@ -87,6 +88,7 @@ def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) ->
         options.auth_file_path,
         "--auto-login-timeout-seconds",
         str(options.auto_login_timeout_seconds),
+        "--humanize" if options.humanize else "--no-humanize",
         "--require-answers" if options.require_answers else "--allow-missing-answers",
         (
             "--stop-on-missing-answers"

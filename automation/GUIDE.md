@@ -126,6 +126,7 @@ Useful flags:
 - `--auto-login / --no-auto-login`: attempt host-based login from an auth file before manual prompt.
 - `--auth-file`: local YAML path with host credential/selectors (default `auth/auth_hosts.yaml`).
 - `--auto-login-timeout-seconds`: timeout budget for auto-login steps.
+- `--humanize / --no-humanize`: toggle human-like pacing (random delays, reading pauses, and less robotic click timing).
 - `--max-consecutive-failures`: intervention threshold.
 - `--selector-debug`: write selector match details per extracted question.
 

@@ -53,6 +53,9 @@ class _StubBrowser:
         self._fingerprint_changed = fingerprint_changed
         self._next_url_after_click = next_url_after_click
         self.click_calls = 0
+        self.human_delay_calls = 0
+        self.human_read_pause_calls = 0
+        self.human_idle_break_calls = 0
 
     async def detect_captcha(self) -> bool:
         return False
@@ -90,6 +93,15 @@ class _StubBrowser:
     async def screenshot(self, path: str) -> str:
         return path
 
+    async def maybe_human_delay(self, reason: str = "action") -> None:
+        self.human_delay_calls += 1
+
+    async def maybe_human_read_pause(self, reason: str = "read_pause") -> None:
+        self.human_read_pause_calls += 1
+
+    async def maybe_human_idle_break(self, reason: str = "idle_break") -> None:
+        self.human_idle_break_calls += 1
+
 
 class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
     def test_is_auth_route_detects_callback_and_login_paths(self) -> None:
@@ -117,6 +129,7 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
         has_next_page: bool,
         click_next_result: bool,
         fingerprint_changed: bool,
+        humanize: bool = False,
         next_url_after_click: str = "",
     ) -> tuple[RuntimeState, _StubBrowser]:
         with tempfile.TemporaryDirectory() as tmp:
@@ -133,6 +146,7 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
                 max_records=50,
                 max_turns=1,
                 navigation_retry_limit=1,
+                humanize=humanize,
                 selector_debug=False,
             )
 
@@ -221,6 +235,18 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.stop_reason, "navigation_out_of_scope")
         self.assertEqual(state.current_url, "https://www.examtopics.com/features/modes")
         self.assertTrue(state.notes.get("last_navigation_decision", {}).get("out_of_scope"))
+
+    async def test_humanize_mode_invokes_browser_pacing_hooks(self) -> None:
+        state, browser = await self._run_once(
+            has_next_page=False,
+            click_next_result=True,
+            fingerprint_changed=True,
+            humanize=True,
+        )
+
+        self.assertEqual(state.stop_reason, "turn_limit_reached")
+        self.assertGreater(browser.human_delay_calls, 0)
+        self.assertGreater(browser.human_read_pause_calls, 0)
 
     async def test_attempt_save_candidate_skips_hybrid_assist_when_stop_reason_set(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

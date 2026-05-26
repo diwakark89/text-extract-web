@@ -26,6 +26,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             enable_auto_login=True,
             auth_file_path="auth/auth_hosts.yaml",
             auto_login_timeout_seconds=55,
+            humanize=True,
             selector_debug=True,
             require_answers=True,
             stop_on_missing_answers=True,
@@ -55,6 +56,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("auth/auth_hosts.yaml", command)
         self.assertIn("--auto-login-timeout-seconds", command)
         self.assertIn("55", command)
+        self.assertIn("--humanize", command)
         self.assertIn("--selector-debug", command)
         self.assertIn("--require-answers", command)
         self.assertIn("--stop-on-missing-answers", command)
@@ -74,6 +76,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             enable_auto_login=False,
             auth_file_path="auth/auth_hosts.yaml",
             auto_login_timeout_seconds=40,
+            humanize=False,
             selector_debug=False,
             require_answers=False,
             stop_on_missing_answers=False,
@@ -92,6 +95,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("auth/auth_hosts.yaml", command)
         self.assertIn("--auto-login-timeout-seconds", command)
         self.assertIn("40", command)
+        self.assertIn("--no-humanize", command)
         self.assertIn("--no-selector-debug", command)
         self.assertIn("--allow-missing-answers", command)
         self.assertIn("--continue-on-missing-answers", command)
