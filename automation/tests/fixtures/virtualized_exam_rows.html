@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Virtualized Exam Rows Fixture</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      main {
+        padding: 14px;
+      }
+
+      .exam-row {
+        min-height: 210px;
+        border: 1px solid #d8d8d8;
+        border-radius: 8px;
+        margin-bottom: 18px;
+        padding: 10px;
+      }
+
+      .question-content > p {
+        margin: 0 0 10px;
+      }
+
+      .mc-question ul {
+        margin: 0 0 10px 20px;
+        padding: 0;
+      }
+
+      .correct-answer {
+        color: #0f5e13;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Virtualized question row fixture</h1>
+      <div id="rows"></div>
+    </main>
+
+    <script>
+      (() => {
+        const total = 25;
+        const host = document.getElementById("rows");
+        const rows = [];
+
+        const rowHtml = (index) => `
+          <div class="question-content">
+            <p>Virtualized question ${index}: Which option is correct?</p>
+            <div class="mc-question">
+              <ul>
+                <li class="mc-option">A. Option A${index}</li>
+                <li class="mc-option">B. Option B${index}</li>
+                <li class="mc-option">C. Option C${index}</li>
+                <li class="mc-option">D. Option D${index}</li>
+              </ul>
+              <p class="correct-answer">Answer(s): B</p>
+            </div>
+          </div>
+        `;
+
+        for (let i = 1; i <= total; i += 1) {
+          const row = document.createElement("div");
+          row.className = "exam-row";
+          row.dataset.idx = String(i);
+          host.appendChild(row);
+          rows.push(row);
+        }
+
+        const updateVirtualizedRows = () => {
+          const viewportTop = window.scrollY;
+          const viewportBottom = viewportTop + window.innerHeight;
+
+          for (const row of rows) {
+            const rect = row.getBoundingClientRect();
+            const absoluteTop = rect.top + window.scrollY;
+            const absoluteBottom = absoluteTop + rect.height;
+            const inRange =
+              absoluteBottom >= viewportTop - 360 &&
+              absoluteTop <= viewportBottom + 360;
+
+            if (inRange) {
+              if (!row.dataset.rendered) {
+                row.innerHTML = rowHtml(Number(row.dataset.idx));
+                row.dataset.rendered = "1";
+              }
+            } else if (row.dataset.rendered) {
+              row.innerHTML = "";
+              delete row.dataset.rendered;
+            }
+          }
+        };
+
+        updateVirtualizedRows();
+        window.addEventListener("scroll", updateVirtualizedRows, {
+          passive: true,
+        });
+      })();
+    </script>
+  </body>
+</html>

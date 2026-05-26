@@ -331,6 +331,13 @@ class CrawlRunner:
                 max_candidates=self.config.max_page_candidates,
             )
             if not candidates:
+                await browser.ensure_browse_mode_ready()
+                await browser.wait_for_exam_content_ready(timeout_ms=3500)
+                candidates = await browser.extract_page_candidates(
+                    max_candidates=self.config.max_page_candidates,
+                )
+
+            if not candidates:
                 single_candidate = await browser.extract_candidate()
                 candidates = [single_candidate]
 

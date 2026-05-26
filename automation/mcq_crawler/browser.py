@@ -178,141 +178,330 @@ async def _extract_page_candidates_impl(
             "target_count": normalized_limit,
         }
 
-    raw = await runtime.page.evaluate(
-        """
-        ({ containerSelectors, questionSelectors, optionSelectors, answerSelectors, maxCandidates }) => {
-            const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
-            const uniq = (items) => {
+    container_selectors = runtime._selector_chain("question_containers")
+    question_selectors = runtime._selector_chain("question")
+    option_selectors = runtime._selector_chain("options")
+    answer_selectors = runtime._answer_selector_chain()
+    show_answer_selectors = runtime._selector_chain("show_answer_buttons")
+
+    async def _extract_from_root(root: Locator) -> dict[str, object]:
+        return await root.evaluate(
+            """
+            (el, { questionSelectors, optionSelectors, answerSelectors }) => {
+              const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+              const uniq = (items) => {
                 const out = [];
                 for (const item of items) {
-                    if (item && !out.includes(item)) out.push(item);
+                  if (item && !out.includes(item)) out.push(item);
                 }
                 return out;
-            };
+              };
 
-            const firstText = (root, selectors) => {
-                for (const selector of selectors) {
-                    let nodes = [];
-                    try {
-                        nodes = Array.from(root.querySelectorAll(selector));
-                    } catch {
-                        continue;
+              const firstText = (selectors) => {
+                for (const selector of selectors || []) {
+                  let nodes = [];
+                  try {
+                    nodes = Array.from(el.querySelectorAll(selector));
+                  } catch {
+                    continue;
+                  }
+
+                  for (const node of nodes) {
+                    const text = clean(node.innerText);
+                    if (text) {
+                      return { text, selector };
                     }
-                    for (const node of nodes) {
-                        const text = clean(node.innerText);
-                        if (text) {
-                            return { text, selector };
-                        }
-                    }
+                  }
                 }
                 return { text: "", selector: "" };
-            };
+              };
 
-            const collectOptions = (root, selectors) => {
-                for (const selector of selectors) {
-                    let nodes = [];
+              const collectOptions = (selectors) => {
+                for (const selector of selectors || []) {
+                  let nodes = [];
+                  try {
+                    nodes = Array.from(el.querySelectorAll(selector));
+                  } catch {
+                    continue;
+                  }
+
+                  const options = [];
+                  for (const node of nodes) {
+                    if (node.matches("li")) {
+                      const text = clean(node.innerText);
+                      if (text) options.push(text);
+                      continue;
+                    }
+
+                    const listItems = Array.from(node.querySelectorAll(":scope > li"));
+                    if (listItems.length > 0) {
+                      for (const li of listItems) {
+                        const text = clean(li.innerText);
+                        if (text) options.push(text);
+                      }
+                      continue;
+                    }
+
+                    const text = clean(node.innerText);
+                    if (text) options.push(text);
+                  }
+
+                  const deduped = uniq(options);
+                  if (deduped.length >= 2) {
+                    return { items: deduped, selector };
+                  }
+                }
+
+                return { items: [], selector: "" };
+              };
+
+              const question = firstText(questionSelectors);
+              const options = collectOptions(optionSelectors);
+              const answer = firstText(answerSelectors);
+
+              return {
+                question: question.text,
+                option_texts: options.items,
+                answer_text: answer.text,
+                used_selectors: {
+                  question: question.selector,
+                  options: options.selector,
+                  answer: answer.selector,
+                },
+              };
+            }
+            """,
+            {
+                "questionSelectors": question_selectors,
+                "optionSelectors": option_selectors,
+                "answerSelectors": answer_selectors,
+            },
+        )
+
+    raw: list[dict[str, object]] = []
+    best_root_selector = ""
+    best_root_count = 0
+    for selector in container_selectors:
+        try:
+            count = await runtime.page.locator(selector).count()
+        except Exception:
+            continue
+        if count > best_root_count:
+            best_root_count = count
+            best_root_selector = selector
+
+    if best_root_selector and best_root_count > 0:
+        limit = min(best_root_count, normalized_limit)
+        for index in range(limit):
+            root = runtime.page.locator(best_root_selector).nth(index)
+
+            try:
+                await root.scroll_into_view_if_needed(timeout=1000)
+            except Exception:
+                pass
+
+            if show_answer_selectors:
+                for show_selector in show_answer_selectors:
+                    try:
+                        toggle = root.locator(show_selector).first
+                        if await toggle.count() == 0:
+                            continue
+                        if not await toggle.is_visible():
+                            continue
+
+                        try:
+                            toggle_text = _clean_text(await toggle.inner_text(timeout=350)).lower()
+                        except Exception:
+                            toggle_text = ""
+                        if "hide answer" in toggle_text:
+                            break
+
+                        await toggle.click(timeout=900)
+                        await asyncio.sleep(0.06)
+                        break
+                    except Exception:
+                        continue
+
+            payload: dict[str, object] | None = None
+            for attempt in range(2):
+                try:
+                    candidate_payload = await _extract_from_root(root)
+                except Exception:
+                    candidate_payload = None
+
+                if isinstance(candidate_payload, dict):
+                    question_value = _clean_text(str(candidate_payload.get("question", "")))
+                    option_values = candidate_payload.get("option_texts")
+                    if isinstance(option_values, list):
+                        cleaned_options = [
+                            _clean_text(str(value))
+                            for value in option_values
+                            if _clean_text(str(value))
+                        ]
+                    else:
+                        cleaned_options = []
+
+                    if question_value and len(cleaned_options) >= 2:
+                        payload = {
+                            **candidate_payload,
+                            "question": question_value,
+                            "option_texts": cleaned_options,
+                        }
+                        break
+
+                if attempt == 0:
+                    await asyncio.sleep(0.2)
+
+            if payload is not None:
+                raw.append(payload)
+
+        runtime.state.notes["last_page_candidate_scan"] = {
+            "root_selector": best_root_selector,
+            "root_count": best_root_count,
+            "payload_count": len(raw),
+            "limit": limit,
+        }
+
+    if not raw:
+        raw_fallback = await runtime.page.evaluate(
+            """
+            ({ containerSelectors, questionSelectors, optionSelectors, answerSelectors, maxCandidates }) => {
+                const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+                const uniq = (items) => {
+                    const out = [];
+                    for (const item of items) {
+                        if (item && !out.includes(item)) out.push(item);
+                    }
+                    return out;
+                };
+
+                const firstText = (root, selectors) => {
+                    for (const selector of selectors) {
+                        let nodes = [];
+                        try {
+                            nodes = Array.from(root.querySelectorAll(selector));
+                        } catch {
+                            continue;
+                        }
+                        for (const node of nodes) {
+                            const text = clean(node.innerText);
+                            if (text) {
+                                return { text, selector };
+                            }
+                        }
+                    }
+                    return { text: "", selector: "" };
+                };
+
+                const collectOptions = (root, selectors) => {
+                    for (const selector of selectors) {
+                        let nodes = [];
+                        try {
+                            nodes = Array.from(root.querySelectorAll(selector));
+                        } catch {
+                            continue;
+                        }
+
+                        const options = [];
+                        for (const node of nodes) {
+                            if (node.matches("li")) {
+                                const text = clean(node.innerText);
+                                if (text) options.push(text);
+                                continue;
+                            }
+
+                            const listItems = Array.from(node.querySelectorAll(":scope > li"));
+                            if (listItems.length > 0) {
+                                for (const li of listItems) {
+                                    const text = clean(li.innerText);
+                                    if (text) options.push(text);
+                                }
+                                continue;
+                            }
+
+                            const text = clean(node.innerText);
+                            if (text) options.push(text);
+                        }
+
+                        const deduped = uniq(options);
+                        if (deduped.length >= 2) {
+                            return { items: deduped, selector };
+                        }
+                    }
+                    return { items: [], selector: "" };
+                };
+
+                const roots = [];
+                const seen = new Set();
+
+                for (const selector of containerSelectors || []) {
                     try {
-                        nodes = Array.from(root.querySelectorAll(selector));
+                        const nodes = Array.from(document.querySelectorAll(selector));
+                        for (const node of nodes) {
+                            if (!node || seen.has(node)) continue;
+                            seen.add(node);
+                            if (clean(node.innerText).length > 0) {
+                                roots.push(node);
+                            }
+                        }
                     } catch {
                         continue;
                     }
-
-                    const options = [];
-                    for (const node of nodes) {
-                        if (node.matches("li")) {
-                            const text = clean(node.innerText);
-                            if (text) options.push(text);
-                            continue;
-                        }
-
-                        const listItems = Array.from(node.querySelectorAll(":scope > li"));
-                        if (listItems.length > 0) {
-                            for (const li of listItems) {
-                                const text = clean(li.innerText);
-                                if (text) options.push(text);
-                            }
-                            continue;
-                        }
-
-                        const text = clean(node.innerText);
-                        if (text) options.push(text);
-                    }
-
-                    const deduped = uniq(options);
-                    if (deduped.length >= 2) {
-                        return { items: deduped, selector };
-                    }
-                }
-                return { items: [], selector: "" };
-            };
-
-            const roots = [];
-            const seen = new Set();
-
-            for (const selector of containerSelectors || []) {
-                try {
-                    const nodes = Array.from(document.querySelectorAll(selector));
-                    for (const node of nodes) {
-                        if (!node || seen.has(node)) continue;
-                        seen.add(node);
-                        if (clean(node.innerText).length > 0) {
-                            roots.push(node);
-                        }
-                    }
-                } catch {
-                    continue;
-                }
-            }
-
-            if (roots.length === 0) {
-                const panelRoots = Array.from(document.querySelectorAll("[role='tabpanel']"))
-                    .filter((node) => clean(node.innerText).length > 0);
-                roots.splice(0, roots.length, ...panelRoots);
-            }
-
-            if (roots.length === 0) {
-                const fallbackRoots = Array.from(document.querySelectorAll(".tab-pane, .panel-body, article, section"))
-                    .filter((node) => node.querySelectorAll("li").length >= 2 && clean(node.innerText).includes("?"));
-                roots.splice(0, roots.length, ...fallbackRoots);
-            }
-
-            const results = [];
-            for (const root of roots.slice(0, Math.max(1, maxCandidates))) {
-                const question = firstText(root, questionSelectors);
-                const options = collectOptions(root, optionSelectors);
-                const answer = firstText(root, answerSelectors);
-
-                if (!question.text || options.items.length < 2) {
-                    continue;
                 }
 
-                results.push({
-                    question: question.text,
-                    option_texts: options.items,
-                    answer_text: answer.text,
-                    used_selectors: {
-                        question: question.selector,
-                        options: options.selector,
-                        answer: answer.selector,
-                    },
-                });
-            }
+                if (roots.length === 0) {
+                    const panelRoots = Array.from(document.querySelectorAll("[role='tabpanel']"))
+                        .filter((node) => clean(node.innerText).length > 0);
+                    roots.splice(0, roots.length, ...panelRoots);
+                }
 
-            return results;
-        }
-        """,
-        {
-            "containerSelectors": runtime._selector_chain("question_containers"),
-            "questionSelectors": runtime._selector_chain("question"),
-            "optionSelectors": runtime._selector_chain("options"),
-            "answerSelectors": runtime._answer_selector_chain(),
-            "maxCandidates": normalized_limit,
-        },
-    )
+                if (roots.length === 0) {
+                    const fallbackRoots = Array.from(document.querySelectorAll(".tab-pane, .panel-body, article, section"))
+                        .filter((node) => node.querySelectorAll("li").length >= 2 && clean(node.innerText).includes("?"));
+                    roots.splice(0, roots.length, ...fallbackRoots);
+                }
+
+                const results = [];
+                for (const root of roots.slice(0, Math.max(1, maxCandidates))) {
+                    const question = firstText(root, questionSelectors);
+                    const options = collectOptions(root, optionSelectors);
+                    const answer = firstText(root, answerSelectors);
+
+                    if (!question.text || options.items.length < 2) {
+                        continue;
+                    }
+
+                    results.push({
+                        question: question.text,
+                        option_texts: options.items,
+                        answer_text: answer.text,
+                        used_selectors: {
+                            question: question.selector,
+                            options: options.selector,
+                            answer: answer.selector,
+                        },
+                    });
+                }
+
+                return results;
+            }
+            """,
+            {
+                "containerSelectors": container_selectors,
+                "questionSelectors": question_selectors,
+                "optionSelectors": option_selectors,
+                "answerSelectors": answer_selectors,
+                "maxCandidates": normalized_limit,
+            },
+        )
+        if isinstance(raw_fallback, list):
+            raw = [item for item in raw_fallback if isinstance(item, dict)]
 
     candidates: list[ExtractionCandidate] = []
     if not isinstance(raw, list):
         return candidates
+
+    seen_payloads: set[str] = set()
 
     for item in raw:
         if not isinstance(item, dict):
@@ -326,6 +515,11 @@ async def _extract_page_candidates_impl(
         option_texts = [_clean_text(str(value)) for value in option_values if _clean_text(str(value))]
         if len(option_texts) < 2:
             continue
+
+        candidate_key = f"{question}\n{'|'.join(option_texts)}"
+        if candidate_key in seen_payloads:
+            continue
+        seen_payloads.add(candidate_key)
 
         answer_text = _clean_text(str(item.get("answer_text", "")))
         used_selectors_raw = item.get("used_selectors")
