@@ -1,6 +1,6 @@
 hosts:
   - host: examcademy.com
-    login_url: "https://examcademy.com/auth/login?returnTo=%2Flogin-success%3FreturnTo%3D%252Fexams%252Famazon%252Faws-certified-cloud-practitioner%252F1"
+    login_url: "https://examcademy.com/auth/login"
     username_selector: "input[name='username'], input[type='email'], input#username"
     password_selector: "input[name='password'], input[type='password'], input#password"
     submit_selector: "button[type='submit'], button[name='action'], button[data-action-button-primary='true']"

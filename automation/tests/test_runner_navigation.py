@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 import sys
 from types import SimpleNamespace
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -103,6 +104,72 @@ class _StubBrowser:
         self.human_idle_break_calls += 1
 
 
+class _StubAuthLocator:
+    def __init__(
+        self,
+        *,
+        visible: bool = True,
+        count: int = 1,
+        evaluate_result: bool = False,
+    ) -> None:
+        self._visible = visible
+        self._count = count
+        self._evaluate_result = evaluate_result
+        self.fill_calls: list[str] = []
+        self.clicked = False
+
+    @property
+    def first(self) -> "_StubAuthLocator":
+        return self
+
+    async def wait_for(self, *, state: str = "visible", timeout: int = 0) -> None:
+        return None
+
+    async def fill(self, value: str, timeout: int = 0) -> None:
+        self.fill_calls.append(value)
+
+    async def evaluate(self, script: str, selector: str) -> bool:
+        return self._evaluate_result
+
+    async def click(self, timeout: int = 0) -> None:
+        self.clicked = True
+
+    async def press(self, key: str) -> None:
+        self.clicked = True
+
+    async def count(self) -> int:
+        return self._count
+
+    async def is_visible(self) -> bool:
+        return self._visible
+
+
+class _StubAuthPage:
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self._locators: dict[str, _StubAuthLocator] = {}
+
+    def set_locator(self, selector: str, locator: _StubAuthLocator) -> None:
+        self._locators[selector] = locator
+
+    def locator(self, selector: str) -> _StubAuthLocator:
+        return self._locators.get(selector, _StubAuthLocator(visible=False, count=0))
+
+    async def wait_for_load_state(self, state: str = "domcontentloaded", timeout: int = 0) -> None:
+        return None
+
+
+class _StubAutoLoginBrowser:
+    def __init__(self, initial_url: str) -> None:
+        self.page = _StubAuthPage(initial_url)
+        self.opened_urls: list[str] = []
+
+    async def open_url(self, url: str) -> str:
+        self.opened_urls.append(url)
+        self.page.url = url
+        return url
+
+
 class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
     def test_is_auth_route_detects_callback_and_login_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -122,6 +189,57 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(runner._is_auth_route("https://examcademy.com/auth/login?returnTo=/x"))
             self.assertTrue(runner._is_auth_route("https://examcademy.com/auth/callback?code=abc"))
             self.assertFalse(runner._is_auth_route("https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1"))
+
+    async def test_attempt_auto_login_redirects_back_to_start_url_after_success(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            start_url = "https://examcademy.com/exams/amazon/aws-certified-solutions-architect-associate-saa-c03/1"
+            config = RunConfig(
+                start_url=start_url,
+                domain_profiles_dir=tmp_dir / "profiles" / "domains",
+                output_path=tmp_dir / "output" / "records.jsonl",
+                error_path=tmp_dir / "output" / "errors.jsonl",
+                checkpoint_path=tmp_dir / "output" / "checkpoint.json",
+                screenshot_dir=tmp_dir / "output" / "screenshots",
+                workspace_dir=tmp_dir,
+            )
+
+            runner = CrawlRunner(config)
+            state = RuntimeState(max_records=config.max_records, next_index=1)
+            state.current_url = start_url
+
+            browser = _StubAutoLoginBrowser(start_url)
+
+            username_selector = "input[name='username']"
+            password_selector = "input[name='password']"
+            success_selector = "a[href*='/logout']"
+            login_link_selector = "a.login-btn, a[href*='/auth/login']"
+
+            browser.page.set_locator(username_selector, _StubAuthLocator(evaluate_result=True))
+            browser.page.set_locator(password_selector, _StubAuthLocator())
+            browser.page.set_locator(success_selector, _StubAuthLocator())
+            browser.page.set_locator(login_link_selector, _StubAuthLocator(visible=False, count=0))
+
+            host_auth = SimpleNamespace(
+                host="examcademy.com",
+                login_url="https://examcademy.com/auth/login",
+                username_selector=username_selector,
+                password_selector=password_selector,
+                submit_selector="button[type='submit']",
+                success_selector=success_selector,
+                username="test-user",
+                password="test-pass",
+                submit_key="Enter",
+            )
+
+            with patch("mcq_crawler.runner.load_host_auth_config", return_value=host_auth):
+                attempted, succeeded = await runner._attempt_auto_login(browser, state)
+
+            self.assertTrue(attempted)
+            self.assertTrue(succeeded)
+            self.assertEqual(browser.opened_urls, ["https://examcademy.com/auth/login", start_url])
+            self.assertEqual(state.current_url, start_url)
+            self.assertTrue(state.notes.get("auto_login_succeeded"))
 
     async def _run_once(
         self,

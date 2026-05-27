@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rows Added During Scan Fixture</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      main {
+        padding: 14px;
+      }
+
+      .exam-row {
+        min-height: 210px;
+        border: 1px solid #d8d8d8;
+        border-radius: 8px;
+        margin-bottom: 18px;
+        padding: 10px;
+      }
+
+      .question-content > p {
+        margin: 0 0 10px;
+      }
+
+      .mc-question ul {
+        margin: 0 0 10px 20px;
+        padding: 0;
+      }
+
+      .correct-answer {
+        color: #0f5e13;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Rows added while extraction is in progress</h1>
+      <div id="rows"></div>
+    </main>
+
+    <script>
+      (() => {
+        const host = document.getElementById("rows");
+        let appended = false;
+
+        const rowHtml = (index) => `
+          <div class="question-content">
+            <p>Deferred row question ${index}: Which option is correct?</p>
+            <div class="mc-question">
+              <ul>
+                <li class="mc-option">A. Option A${index}</li>
+                <li class="mc-option">B. Option B${index}</li>
+                <li class="mc-option">C. Option C${index}</li>
+                <li class="mc-option">D. Option D${index}</li>
+              </ul>
+              <p class="correct-answer">Answer(s): C</p>
+            </div>
+          </div>
+        `;
+
+        const appendRow = (index) => {
+          const row = document.createElement("div");
+          row.className = "exam-row";
+          row.dataset.idx = String(index);
+          row.innerHTML = rowHtml(index);
+          host.appendChild(row);
+        };
+
+        for (let i = 1; i <= 24; i += 1) {
+          appendRow(i);
+        }
+
+        const maybeAppendFinalRow = () => {
+          if (appended) {
+            return;
+          }
+
+          const nearBottom =
+            window.scrollY + window.innerHeight >=
+            document.documentElement.scrollHeight - 80;
+          if (!nearBottom) {
+            return;
+          }
+
+          appended = true;
+          setTimeout(() => {
+            appendRow(25);
+          }, 90);
+        };
+
+        window.addEventListener("scroll", maybeAppendFinalRow, {
+          passive: true,
+        });
+      })();
+    </script>
+  </body>
+</html>

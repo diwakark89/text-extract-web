@@ -292,9 +292,30 @@ async def _extract_page_candidates_impl(
             best_root_selector = selector
 
     if best_root_selector and best_root_count > 0:
-        limit = min(best_root_count, normalized_limit)
-        for index in range(limit):
-            root = runtime.page.locator(best_root_selector).nth(index)
+        root_locator = runtime.page.locator(best_root_selector)
+        initial_root_count = best_root_count
+        observed_root_count = best_root_count
+        scanned_roots = 0
+        stagnant_rounds = 0
+        index = 0
+
+        while index < normalized_limit:
+            try:
+                current_root_count = await root_locator.count()
+            except Exception:
+                break
+
+            observed_root_count = max(observed_root_count, current_root_count)
+            if index >= current_root_count:
+                stagnant_rounds += 1
+                if stagnant_rounds >= 4:
+                    break
+                await asyncio.sleep(0.12)
+                continue
+
+            stagnant_rounds = 0
+            root = root_locator.nth(index)
+            scanned_roots += 1
 
             try:
                 await root.scroll_into_view_if_needed(timeout=1000)
@@ -324,7 +345,7 @@ async def _extract_page_candidates_impl(
                         continue
 
             payload: dict[str, object] | None = None
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
                     candidate_payload = await _extract_from_root(root)
                 except Exception:
@@ -350,17 +371,21 @@ async def _extract_page_candidates_impl(
                         }
                         break
 
-                if attempt == 0:
-                    await asyncio.sleep(0.2)
+                if attempt < 2:
+                    await asyncio.sleep(0.18 * (attempt + 1))
 
             if payload is not None:
                 raw.append(payload)
 
+            index += 1
+
         runtime.state.notes["last_page_candidate_scan"] = {
             "root_selector": best_root_selector,
-            "root_count": best_root_count,
+            "root_count": observed_root_count,
             "payload_count": len(raw),
-            "limit": limit,
+            "limit": normalized_limit,
+            "scanned_roots": scanned_roots,
+            "initial_root_count": initial_root_count,
         }
 
     if not raw:

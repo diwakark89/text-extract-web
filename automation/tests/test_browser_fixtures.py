@@ -100,6 +100,20 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(candidates), 25)
         self.assertIn("Virtualized question 25", candidates[-1].question)
 
+    async def test_extract_page_candidates_scans_rows_added_mid_scan(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "rows_added_during_scan.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.runtime.state.selector_overrides["question_containers"] = ["div.exam-row"]
+        self.runtime.state.selector_overrides["question"] = [".question-content > p"]
+        self.runtime.state.selector_overrides["options"] = [".question-content .mc-question > ul > li.mc-option"]
+        self.runtime.state.selector_overrides["answer"] = [".question-content .mc-question .correct-answer"]
+
+        candidates = await self.runtime.extract_page_candidates(max_candidates=40)
+
+        self.assertEqual(len(candidates), 25)
+        self.assertIn("Deferred row question 25", candidates[-1].question)
+
     async def test_extract_page_candidates_keeps_single_valid_container(self) -> None:
         fixture = (
             PROJECT_ROOT / "tests" / "fixtures" / "single_question_container_with_noise.html"

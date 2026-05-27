@@ -776,6 +776,14 @@ class CrawlRunner:
                     and (not login_url_norm or after_submit_url != login_url_norm)
                 ) or (not username_still_visible and not password_still_visible and not login_link_visible)
 
+            if not success and page is not None and not self._is_auth_route(page.url):
+                try:
+                    success = await browser.wait_for_exam_content_ready(
+                        timeout_ms=min(timeout_ms, 4500),
+                    )
+                except Exception:
+                    success = False
+
             if not success and self._is_auth_route(page.url if page else "") and target_after_login:
                 try:
                     await browser.open_url(target_after_login)
@@ -798,7 +806,8 @@ class CrawlRunner:
                         success = not username_still_visible and not password_still_visible and not login_link_visible
 
             if success:
-                if self._is_auth_route(page.url if page else "") and target_after_login:
+                current_after_login = self._normalized_url(page.url if page else "")
+                if target_after_login and current_after_login != target_after_login:
                     try:
                         await browser.open_url(target_after_login)
                         page = browser.page
