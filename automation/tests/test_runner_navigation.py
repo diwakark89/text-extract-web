@@ -37,6 +37,23 @@ def _sample_candidate() -> ExtractionCandidate:
     )
 
 
+def _sample_candidate_two() -> ExtractionCandidate:
+    return ExtractionCandidate(
+        question="Which service provides a managed NoSQL database?",
+        option_texts=[
+            "A. Amazon DynamoDB",
+            "B. Amazon Aurora",
+            "C. Amazon RDS",
+            "D. Amazon Redshift",
+        ],
+        answer_text="Answer(s): A",
+        confidence=0.95,
+        quality_score=0.95,
+        warnings=[],
+        used_selectors={},
+    )
+
+
 class _StubBrowser:
     def __init__(
         self,
@@ -579,6 +596,75 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(message, "Non-question candidate skipped.")
             self.assertEqual(state.stop_reason, "")
             self.assertEqual(state.last_warning, "non_question_candidate")
+
+    async def test_low_coverage_retry_merges_additional_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+
+            config = RunConfig(
+                start_url="https://www.examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/",
+                domain_profiles_dir=tmp_dir / "profiles" / "domains",
+                output_path=tmp_dir / "output" / "records.jsonl",
+                error_path=tmp_dir / "output" / "errors.jsonl",
+                checkpoint_path=tmp_dir / "output" / "checkpoint.json",
+                screenshot_dir=tmp_dir / "output" / "screenshots",
+                workspace_dir=tmp_dir,
+                max_records=50,
+                max_turns=1,
+                navigation_retry_limit=1,
+                selector_debug=False,
+            )
+
+            runner = CrawlRunner(config)
+            state = RuntimeState(max_records=config.max_records, next_index=1)
+            state.domain = "www.examtopics.com"
+            state.current_url = config.start_url
+            state.last_page_candidates_found = 20
+
+            browser = _StubBrowser(
+                has_next_page=False,
+                click_next_result=False,
+                fingerprint_changed=False,
+            )
+
+            calls = {"count": 0}
+
+            async def _extract_with_retry(max_candidates: int = 20) -> list[ExtractionCandidate]:
+                calls["count"] += 1
+                if calls["count"] == 1:
+                    return [_sample_candidate()]
+                return [_sample_candidate(), _sample_candidate_two()]
+
+            browser.extract_page_candidates = _extract_with_retry  # type: ignore[method-assign]
+
+            store = JsonlStore(config.output_path, config.error_path)
+            toolbox = CopilotToolbox(
+                browser=browser,
+                store=store,
+                state=state,
+                screenshot_dir=config.screenshot_dir,
+                min_confidence=config.min_confidence,
+                min_quality_score=config.min_quality_score,
+                require_answers=config.require_answers,
+                selector_debug=config.selector_debug,
+            )
+            profile_store = SelectorProfileStore(config.domain_profiles_dir)
+            checkpoint_store = CheckpointStore(config.checkpoint_path)
+
+            await runner._run_deterministic_loop(
+                browser=browser,
+                state=state,
+                profile_store=profile_store,
+                checkpoint_store=checkpoint_store,
+                toolbox=toolbox,
+            )
+
+            retry_summary = state.notes.get("last_low_coverage_retry", {})
+            self.assertEqual(calls["count"], 2)
+            self.assertEqual(retry_summary.get("baseline_count"), 1)
+            self.assertEqual(retry_summary.get("refreshed_count"), 2)
+            self.assertEqual(retry_summary.get("merged_count"), 2)
+            self.assertEqual(state.records_written, 2)
 
 
 

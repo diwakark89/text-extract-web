@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import unittest
+import os
 from pathlib import Path
+import tempfile
+import unittest
 import sys
+from unittest import mock
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -11,11 +14,26 @@ if str(PROJECT_ROOT) not in sys.path:
 from dashboard.cli_builder import (
     DashboardRunOptions,
     build_crawler_command,
+    resolve_python_executable,
     resolve_records_output_path,
 )
 
 
+def _venv_python_path(venv_dir: Path) -> Path:
+    if os.name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
 class DashboardCommandBuilderTests(unittest.TestCase):
+    def test_build_command_uses_resolved_python_executable(self) -> None:
+        options = DashboardRunOptions(start_url="https://example.com/questions")
+
+        with mock.patch("dashboard.cli_builder.resolve_python_executable", return_value="python-custom"):
+            command = build_crawler_command(PROJECT_ROOT, options)
+
+        self.assertEqual(command[0], "python-custom")
+
     def test_build_command_with_profile_and_resume(self) -> None:
         options = DashboardRunOptions(
             start_url="https://example.com/questions",
@@ -110,6 +128,35 @@ class DashboardCommandBuilderTests(unittest.TestCase):
     def test_records_json_name_maps_to_jsonl_output_path(self) -> None:
         resolved = resolve_records_output_path(PROJECT_ROOT, "records.json")
         self.assertTrue(str(resolved).endswith(str(Path("output") / "records.jsonl")))
+
+    def test_resolve_python_executable_prefers_workspace_repo_venv(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace_root = Path(temp_dir)
+            automation_dir = workspace_root / "automation"
+            automation_dir.mkdir(parents=True)
+
+            repo_venv_python = _venv_python_path(workspace_root / ".venv")
+            repo_venv_python.parent.mkdir(parents=True)
+            repo_venv_python.write_text("", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                with mock.patch(
+                    "dashboard.cli_builder._python_can_import_typer",
+                    side_effect=lambda candidate: candidate == str(repo_venv_python.resolve()),
+                ):
+                    resolved = resolve_python_executable(automation_dir)
+
+        self.assertEqual(resolved, str(repo_venv_python.resolve()))
+
+    def test_resolve_python_executable_honors_explicit_override(self) -> None:
+        with mock.patch.dict(os.environ, {"MCQ_CRAWLER_PYTHON": "python-override"}, clear=True):
+            with mock.patch(
+                "dashboard.cli_builder._python_can_import_typer",
+                side_effect=lambda candidate: candidate == "python-override",
+            ):
+                resolved = resolve_python_executable(PROJECT_ROOT)
+
+        self.assertEqual(resolved, "python-override")
 
 
 if __name__ == "__main__":

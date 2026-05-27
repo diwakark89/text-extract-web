@@ -14,11 +14,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from dashboard.file_views import (
     list_yaml_profiles,
+    load_dashboard_settings,
     load_profile_for_url,
     load_recent_urls,
     read_checkpoint,
     read_jsonl_tail,
     resolve_latest_records_jsonl_path,
+    save_dashboard_settings,
     save_profile_for_url,
     save_recent_url,
     url_host_key,
@@ -26,6 +28,50 @@ from dashboard.file_views import (
 
 
 class DashboardFileViewTests(unittest.TestCase):
+    def test_dashboard_settings_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            save_dashboard_settings(
+                output_dir,
+                {
+                    "control_headless": True,
+                    "control_model": "gpt-5.4",
+                    "control_max_records": 1200,
+                    "ignored": ["not-serializable-for-settings"],
+                },
+            )
+
+            settings = load_dashboard_settings(output_dir)
+
+            self.assertEqual(settings.get("control_headless"), True)
+            self.assertEqual(settings.get("control_model"), "gpt-5.4")
+            self.assertEqual(settings.get("control_max_records"), 1200)
+            self.assertNotIn("ignored", settings)
+
+    def test_dashboard_settings_survive_recent_url_and_profile_updates(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            saved_settings = {
+                "control_headless": True,
+                "control_model": "gpt-5.4",
+                "records_output_name": "records_custom.jsonl",
+            }
+            save_dashboard_settings(output_dir, saved_settings)
+
+            save_recent_url(
+                output_dir,
+                "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1",
+            )
+            save_profile_for_url(
+                output_dir,
+                "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1",
+                "C:/profiles/examcademy_like.yaml",
+            )
+
+            reloaded = load_dashboard_settings(output_dir)
+            self.assertEqual(reloaded, saved_settings)
+
     def test_read_jsonl_tail_handles_bad_lines(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "records.jsonl"

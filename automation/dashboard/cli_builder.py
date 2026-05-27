@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import subprocess
 import sys
 
 
@@ -31,6 +33,60 @@ class DashboardRunOptions:
     records_output_name: str = "records.jsonl"
 
 
+def _venv_python_path(venv_dir: Path) -> Path:
+    if os.name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
+def _python_can_import_typer(python_command: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [python_command, "-c", "import typer"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=4,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    return completed.returncode == 0
+
+
+def resolve_python_executable(automation_dir: Path) -> str:
+    """Pick a Python interpreter that has the crawler runtime dependencies."""
+    explicit = os.getenv("MCQ_CRAWLER_PYTHON", "").strip()
+
+    candidates: list[str] = []
+    if explicit:
+        explicit_path = Path(explicit).expanduser()
+        candidates.append(str(explicit_path.resolve()) if explicit_path.exists() else explicit)
+
+    candidates.append(str(_venv_python_path(automation_dir / ".venv").resolve()))
+    candidates.append(str(_venv_python_path(automation_dir.parent / ".venv").resolve()))
+
+    active_virtual_env = os.getenv("VIRTUAL_ENV", "").strip()
+    if active_virtual_env:
+        candidates.append(str(_venv_python_path(Path(active_virtual_env).expanduser()).resolve()))
+
+    candidates.append(sys.executable)
+
+    deduped_candidates: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = candidate.lower() if os.name == "nt" else candidate
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_candidates.append(candidate)
+
+    for candidate in deduped_candidates:
+        if _python_can_import_typer(candidate):
+            return candidate
+
+    return deduped_candidates[-1]
+
+
 def normalize_records_output_name(name: str) -> str:
     base_name = Path((name or "").strip()).name
     if not base_name:
@@ -55,9 +111,10 @@ def resolve_records_output_path(automation_dir: Path, name: str) -> Path:
 def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) -> list[str]:
     """Build the CLI command while keeping main.py as the execution engine."""
     records_output_path = resolve_records_output_path(automation_dir, options.records_output_name)
+    python_executable = resolve_python_executable(automation_dir)
 
     command = [
-        sys.executable,
+        python_executable,
         str((automation_dir / "main.py").resolve()),
         "--start-url",
         options.start_url,

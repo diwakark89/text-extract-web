@@ -60,6 +60,9 @@ class CheckpointStore:
             "llm_assist_attempts_total": state.llm_assist_attempts_total,
             "llm_assist_saved_count": state.llm_assist_saved_count,
             "llm_assist_last_trigger_reason": state.llm_assist_last_trigger_reason,
+            "current_page_extraction_diagnostics": state.current_page_extraction_diagnostics,
+            "last_page_extraction_diagnostics": state.last_page_extraction_diagnostics,
+            "navigation_stop_snapshot": state.navigation_stop_snapshot,
         }
         self.checkpoint_path.write_text(
             json.dumps(payload, ensure_ascii=True, indent=2),
@@ -126,6 +129,18 @@ class CheckpointStore:
         llm_assist_last_trigger_reason = snapshot.get("llm_assist_last_trigger_reason")
         if isinstance(llm_assist_last_trigger_reason, str):
             state.llm_assist_last_trigger_reason = llm_assist_last_trigger_reason
+
+        current_page_extraction_diagnostics = snapshot.get("current_page_extraction_diagnostics")
+        if isinstance(current_page_extraction_diagnostics, dict):
+            state.current_page_extraction_diagnostics = current_page_extraction_diagnostics
+
+        last_page_extraction_diagnostics = snapshot.get("last_page_extraction_diagnostics")
+        if isinstance(last_page_extraction_diagnostics, dict):
+            state.last_page_extraction_diagnostics = last_page_extraction_diagnostics
+
+        navigation_stop_snapshot = snapshot.get("navigation_stop_snapshot")
+        if isinstance(navigation_stop_snapshot, dict):
+            state.navigation_stop_snapshot = navigation_stop_snapshot
 
         selector_overrides = snapshot.get("selector_overrides")
         if isinstance(selector_overrides, dict):

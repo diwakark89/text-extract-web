@@ -99,3 +99,6 @@ class RuntimeState:
     llm_assist_attempts_total: int = 0
     llm_assist_saved_count: int = 0
     llm_assist_last_trigger_reason: str = ""
+    current_page_extraction_diagnostics: dict[str, Any] = field(default_factory=dict)
+    last_page_extraction_diagnostics: dict[str, Any] = field(default_factory=dict)
+    navigation_stop_snapshot: dict[str, Any] = field(default_factory=dict)

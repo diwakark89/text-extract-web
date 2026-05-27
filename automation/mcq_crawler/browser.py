@@ -282,11 +282,20 @@ async def _extract_page_candidates_impl(
     raw: list[dict[str, object]] = []
     best_root_selector = ""
     best_root_count = 0
+    root_selector_counts: dict[str, int] = {}
+    root_skip_reasons: dict[str, int] = {}
+    root_exception_count = 0
+
+    def _increment_skip(reason: str) -> None:
+        root_skip_reasons[reason] = root_skip_reasons.get(reason, 0) + 1
+
     for selector in container_selectors:
         try:
             count = await runtime.page.locator(selector).count()
         except Exception:
             continue
+        if count > 0:
+            root_selector_counts[selector] = count
         if count > best_root_count:
             best_root_count = count
             best_root_selector = selector
@@ -345,11 +354,14 @@ async def _extract_page_candidates_impl(
                         continue
 
             payload: dict[str, object] | None = None
+            last_skip_reason = "extraction_failed"
             for attempt in range(3):
                 try:
                     candidate_payload = await _extract_from_root(root)
                 except Exception:
+                    root_exception_count += 1
                     candidate_payload = None
+                    last_skip_reason = "extract_exception"
 
                 if isinstance(candidate_payload, dict):
                     question_value = _clean_text(str(candidate_payload.get("question", "")))
@@ -371,11 +383,22 @@ async def _extract_page_candidates_impl(
                         }
                         break
 
+                    if not question_value:
+                        last_skip_reason = "empty_question"
+                    elif len(cleaned_options) < 2:
+                        last_skip_reason = "insufficient_options"
+                    else:
+                        last_skip_reason = "payload_invalid"
+                else:
+                    last_skip_reason = "payload_invalid"
+
                 if attempt < 2:
                     await asyncio.sleep(0.18 * (attempt + 1))
 
             if payload is not None:
                 raw.append(payload)
+            else:
+                _increment_skip(last_skip_reason)
 
             index += 1
 
@@ -386,6 +409,9 @@ async def _extract_page_candidates_impl(
             "limit": normalized_limit,
             "scanned_roots": scanned_roots,
             "initial_root_count": initial_root_count,
+            "root_selector_counts": root_selector_counts,
+            "root_skip_reasons": root_skip_reasons,
+            "root_exception_count": root_exception_count,
         }
 
     if not raw:
@@ -528,6 +554,7 @@ async def _extract_page_candidates_impl(
         return candidates
 
     seen_payloads: set[str] = set()
+    duplicate_payloads = 0
 
     for item in raw:
         if not isinstance(item, dict):
@@ -544,6 +571,7 @@ async def _extract_page_candidates_impl(
 
         candidate_key = f"{question}\n{'|'.join(option_texts)}"
         if candidate_key in seen_payloads:
+            duplicate_payloads += 1
             continue
         seen_payloads.add(candidate_key)
 
@@ -591,6 +619,19 @@ async def _extract_page_candidates_impl(
                 used_selectors=used_selectors,
             ),
         )
+
+    runtime.state.current_page_extraction_diagnostics = {
+        "max_candidates": normalized_limit,
+        "best_root_selector": best_root_selector,
+        "best_root_count": best_root_count,
+        "root_selector_counts": root_selector_counts,
+        "scanned_root_skip_reasons": root_skip_reasons,
+        "root_exception_count": root_exception_count,
+        "raw_payload_count": len(raw),
+        "unique_candidate_count": len(candidates),
+        "duplicate_payload_count": duplicate_payloads,
+        "materialization": runtime.state.notes.get("last_candidate_materialization", {}),
+    }
 
     return candidates
 
@@ -1147,7 +1188,11 @@ class BrowserRuntime:
         for selector in selectors:
             try:
                 locator = self.page.locator(selector)
-                if await self._click_ranked_next_candidates(locator, min_score=1):
+                if await self._click_ranked_next_candidates(
+                    locator,
+                    min_score=1,
+                    selector_label=selector,
+                ):
                     return True
             except Exception:
                 continue
@@ -1156,7 +1201,11 @@ class BrowserRuntime:
         for selector in selectors:
             try:
                 locator = self.page.locator(selector)
-                if await self._click_ranked_next_candidates(locator, min_score=0):
+                if await self._click_ranked_next_candidates(
+                    locator,
+                    min_score=0,
+                    selector_label=selector,
+                ):
                     return True
             except Exception:
                 continue
@@ -1183,7 +1232,12 @@ class BrowserRuntime:
         for selector in selectors:
             try:
                 locator = self.page.locator(selector)
-                if await self._click_ranked_next_candidates(locator, min_score=1, dry_run=True):
+                if await self._click_ranked_next_candidates(
+                    locator,
+                    min_score=1,
+                    dry_run=True,
+                    selector_label=selector,
+                ):
                     return True
             except Exception:
                 continue
@@ -1196,6 +1250,7 @@ class BrowserRuntime:
         *,
         min_score: int = -999,
         dry_run: bool = False,
+        selector_label: str = "",
     ) -> bool:
         count = await locator.count()
         if count == 0:
@@ -1225,6 +1280,8 @@ class BrowserRuntime:
                 return ""
 
         ranked: list[tuple[int, int]] = []
+        ranked_details: list[dict[str, Any]] = []
+        skipped_out_of_scope = 0
         upper_bound = min(count, 30)
 
         for index in range(upper_bound):
@@ -1323,9 +1380,30 @@ class BrowserRuntime:
                 out_of_scope = True
 
             if out_of_scope:
+                skipped_out_of_scope += 1
                 continue
 
             ranked.append((score, index))
+            ranked_details.append(
+                {
+                    "score": score,
+                    "index": index,
+                    "text": text[:80],
+                    "href": href_raw[:180],
+                    "rel": rel[:30],
+                },
+            )
+
+        ranked_details.sort(key=lambda item: int(item.get("score", 0)), reverse=True)
+        self.state.notes["last_next_candidates"] = {
+            "selector": selector_label,
+            "min_score": min_score,
+            "dry_run": dry_run,
+            "candidate_count": count,
+            "ranked_count": len(ranked),
+            "skipped_out_of_scope": skipped_out_of_scope,
+            "top_ranked": ranked_details[:5],
+        }
 
         if not ranked:
             return False
@@ -1378,11 +1456,11 @@ class BrowserRuntime:
             "scrollY": 0,
         }
 
-        for _ in range(max_passes):
+        for pass_index in range(max_passes):
             try:
                 snapshot = await self.page.evaluate(
                     """
-                    ({ containerSelectors, fallbackSelectors }) => {
+                    ({ containerSelectors, fallbackSelectors, passIndex }) => {
                       const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
                       const isVisible = (node) => {
                         if (!node) return false;
@@ -1424,9 +1502,10 @@ class BrowserRuntime:
                       const beforeY = window.scrollY || 0;
                       let didScroll = false;
                       if (roots.length > 0) {
+                                                const chunkSize = Math.max(1, Math.round(window.innerHeight / 180));
                         const nextIndex = Math.min(
                           roots.length - 1,
-                          Math.max(0, visibleRoots.length - 1),
+                                                    Math.max(0, visibleRoots.length - 1 + (passIndex * chunkSize)),
                         );
                         const target = roots[nextIndex] || roots[roots.length - 1];
                         if (target && typeof target.scrollIntoView === "function") {
@@ -1453,6 +1532,7 @@ class BrowserRuntime:
                     {
                         "containerSelectors": self._selector_chain("question_containers"),
                         "fallbackSelectors": ["[role='tabpanel']", ".tab-pane", ".panel-body", "article", "section"],
+                        "passIndex": pass_index,
                     },
                 )
             except Exception as exc:

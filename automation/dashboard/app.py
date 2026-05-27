@@ -20,11 +20,13 @@ from dashboard.cli_builder import (
 )
 from dashboard.file_views import (
     list_yaml_profiles,
+    load_dashboard_settings,
     load_profile_for_url,
     load_recent_urls,
     read_checkpoint,
     read_jsonl_tail,
     resolve_latest_records_jsonl_path,
+    save_dashboard_settings,
     save_profile_for_url,
     save_recent_url,
     url_host_key,
@@ -35,6 +37,34 @@ OUTPUT_DIR = AUTOMATION_DIR / "output"
 BASE_PROFILES_DIR = AUTOMATION_DIR / "profiles"
 LEARNED_PROFILES_DIR = BASE_PROFILES_DIR / "domains"
 DEFAULT_DASHBOARD_MODEL = os.getenv("MCQ_DASHBOARD_MODEL", "gpt-5.4")
+DASHBOARD_ORCHESTRATION_MODES = (
+    "hybrid_gap_fill",
+    "deterministic_only",
+    "llm_orchestrator",
+)
+DASHBOARD_PERSISTED_SETTING_KEYS = (
+    "start_url",
+    "control_resume",
+    "control_headless",
+    "control_prompt_for_login_at_start",
+    "control_enable_auto_login",
+    "control_auth_file_path",
+    "control_auto_login_timeout_seconds",
+    "control_humanize",
+    "control_selector_debug",
+    "control_require_answers",
+    "control_stop_on_missing_answers",
+    "control_auto_learn_profiles",
+    "records_output_name",
+    "control_max_records",
+    "control_questions_per_file",
+    "control_max_turns",
+    "control_start_index",
+    "control_min_confidence",
+    "control_min_quality_score",
+    "control_model",
+    "control_orchestration_mode",
+)
 
 
 @st.cache_resource
@@ -78,6 +108,45 @@ def _as_int(value: object) -> int | None:
     return None
 
 
+def _as_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return None
+    return None
+
+
+def _as_bool(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        return None
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return None
+
+
+def _clamp_int(value: int, *, minimum: int, maximum: int) -> int:
+    return max(minimum, min(maximum, value))
+
+
+def _clamp_float(value: float, *, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
+
+
 def main() -> None:
     st.set_page_config(page_title="MCQ Crawler Dashboard", layout="wide")
     st.title("MCQ Crawler Personal Dashboard")
@@ -93,8 +162,11 @@ def main() -> None:
         workspace_root=AUTOMATION_DIR,
     )
 
+    persisted_settings = load_dashboard_settings(OUTPUT_DIR)
+
     if "start_url" not in st.session_state:
-        st.session_state.start_url = recent_urls[0] if recent_urls else ""
+        persisted_start_url = str(persisted_settings.get("start_url") or "").strip()
+        st.session_state.start_url = persisted_start_url or (recent_urls[0] if recent_urls else "")
     if "recent_url_selector" not in st.session_state:
         st.session_state.recent_url_selector = "(none)"
     if "last_applied_recent_url" not in st.session_state:
@@ -108,6 +180,134 @@ def main() -> None:
         st.session_state.profile_host_key = url_host_key(st.session_state.start_url)
     if "start_run_requested" not in st.session_state:
         st.session_state.start_run_requested = 0
+    if "control_resume" not in st.session_state:
+        st.session_state.control_resume = _as_bool(persisted_settings.get("control_resume"))
+        if st.session_state.control_resume is None:
+            st.session_state.control_resume = True
+    if "control_headless" not in st.session_state:
+        st.session_state.control_headless = _as_bool(persisted_settings.get("control_headless"))
+        if st.session_state.control_headless is None:
+            st.session_state.control_headless = False
+    if "control_prompt_for_login_at_start" not in st.session_state:
+        st.session_state.control_prompt_for_login_at_start = _as_bool(
+            persisted_settings.get("control_prompt_for_login_at_start"),
+        )
+        if st.session_state.control_prompt_for_login_at_start is None:
+            st.session_state.control_prompt_for_login_at_start = False
+    if "control_enable_auto_login" not in st.session_state:
+        st.session_state.control_enable_auto_login = _as_bool(
+            persisted_settings.get("control_enable_auto_login"),
+        )
+        if st.session_state.control_enable_auto_login is None:
+            st.session_state.control_enable_auto_login = False
+    if "control_auth_file_path" not in st.session_state:
+        st.session_state.control_auth_file_path = str(
+            persisted_settings.get("control_auth_file_path")
+            or "auth/auth_hosts.yaml",
+        ).strip() or "auth/auth_hosts.yaml"
+    if "control_auto_login_timeout_seconds" not in st.session_state:
+        saved_auto_login_timeout = _as_int(
+            persisted_settings.get("control_auto_login_timeout_seconds"),
+        )
+        st.session_state.control_auto_login_timeout_seconds = (
+            _clamp_int(saved_auto_login_timeout, minimum=5, maximum=300)
+            if saved_auto_login_timeout is not None
+            else 40
+        )
+    if "control_humanize" not in st.session_state:
+        st.session_state.control_humanize = _as_bool(persisted_settings.get("control_humanize"))
+        if st.session_state.control_humanize is None:
+            st.session_state.control_humanize = False
+    if "control_selector_debug" not in st.session_state:
+        st.session_state.control_selector_debug = _as_bool(
+            persisted_settings.get("control_selector_debug"),
+        )
+        if st.session_state.control_selector_debug is None:
+            st.session_state.control_selector_debug = False
+    if "control_require_answers" not in st.session_state:
+        st.session_state.control_require_answers = _as_bool(
+            persisted_settings.get("control_require_answers"),
+        )
+        if st.session_state.control_require_answers is None:
+            st.session_state.control_require_answers = True
+    if "control_stop_on_missing_answers" not in st.session_state:
+        st.session_state.control_stop_on_missing_answers = _as_bool(
+            persisted_settings.get("control_stop_on_missing_answers"),
+        )
+        if st.session_state.control_stop_on_missing_answers is None:
+            st.session_state.control_stop_on_missing_answers = False
+    if "control_auto_learn_profiles" not in st.session_state:
+        st.session_state.control_auto_learn_profiles = _as_bool(
+            persisted_settings.get("control_auto_learn_profiles"),
+        )
+        if st.session_state.control_auto_learn_profiles is None:
+            st.session_state.control_auto_learn_profiles = True
+    if "records_output_name" not in st.session_state:
+        st.session_state.records_output_name = str(
+            persisted_settings.get("records_output_name") or "records.jsonl",
+        ).strip() or "records.jsonl"
+    if "control_max_records" not in st.session_state:
+        saved_max_records = _as_int(persisted_settings.get("control_max_records"))
+        st.session_state.control_max_records = (
+            _clamp_int(saved_max_records, minimum=1, maximum=5000)
+            if saved_max_records is not None
+            else 1000
+        )
+    if "control_questions_per_file" not in st.session_state:
+        saved_questions_per_file = _as_int(
+            persisted_settings.get("control_questions_per_file"),
+        )
+        st.session_state.control_questions_per_file = (
+            _clamp_int(saved_questions_per_file, minimum=1, maximum=5000)
+            if saved_questions_per_file is not None
+            else 300
+        )
+    if "control_max_turns" not in st.session_state:
+        saved_max_turns = _as_int(persisted_settings.get("control_max_turns"))
+        st.session_state.control_max_turns = (
+            _clamp_int(saved_max_turns, minimum=10, maximum=10000)
+            if saved_max_turns is not None
+            else 800
+        )
+    if "control_start_index" not in st.session_state:
+        saved_start_index = _as_int(persisted_settings.get("control_start_index"))
+        st.session_state.control_start_index = (
+            _clamp_int(saved_start_index, minimum=1, maximum=100000)
+            if saved_start_index is not None
+            else 1
+        )
+    if "control_min_confidence" not in st.session_state:
+        saved_min_confidence = _as_float(persisted_settings.get("control_min_confidence"))
+        st.session_state.control_min_confidence = (
+            _clamp_float(saved_min_confidence, minimum=0.0, maximum=1.0)
+            if saved_min_confidence is not None
+            else 0.65
+        )
+    if "control_min_quality_score" not in st.session_state:
+        saved_min_quality_score = _as_float(
+            persisted_settings.get("control_min_quality_score"),
+        )
+        st.session_state.control_min_quality_score = (
+            _clamp_float(saved_min_quality_score, minimum=0.0, maximum=1.0)
+            if saved_min_quality_score is not None
+            else 0.72
+        )
+    if "control_model" not in st.session_state:
+        st.session_state.control_model = str(
+            persisted_settings.get("control_model") or DEFAULT_DASHBOARD_MODEL,
+        ).strip() or DEFAULT_DASHBOARD_MODEL
+    if "control_orchestration_mode" not in st.session_state:
+        saved_orchestration_mode = str(
+            persisted_settings.get("control_orchestration_mode") or "",
+        ).strip()
+        if saved_orchestration_mode not in DASHBOARD_ORCHESTRATION_MODES:
+            saved_orchestration_mode = DASHBOARD_ORCHESTRATION_MODES[0]
+        st.session_state.control_orchestration_mode = saved_orchestration_mode
+    if "dashboard_last_saved_settings" not in st.session_state:
+        st.session_state.dashboard_last_saved_settings = {
+            key: st.session_state.get(key)
+            for key in DASHBOARD_PERSISTED_SETTING_KEYS
+        }
 
     st.sidebar.header("Run Controls")
     chosen_recent = st.sidebar.selectbox(
@@ -161,72 +361,120 @@ def main() -> None:
 
     selected_profile = profile_by_value.get(selected_profile_value)
 
-    resume = st.sidebar.checkbox("Resume from checkpoint", value=True)
-    headless = st.sidebar.checkbox("Headless", value=False)
+    resume = st.sidebar.checkbox("Resume from checkpoint", key="control_resume")
+    headless = st.sidebar.checkbox("Headless", key="control_headless")
     prompt_for_login_at_start = st.sidebar.checkbox(
         "Prompt for login at start",
-        value=False,
+        key="control_prompt_for_login_at_start",
         help="Open page and wait for manual login before crawling starts.",
     )
     enable_auto_login = st.sidebar.checkbox(
         "Auto login from auth file",
-        value=False,
+        key="control_enable_auto_login",
         help="Use host-based credentials/selectors from a local auth YAML before manual prompt.",
     )
     auth_file_path = st.sidebar.text_input(
         "Auth file",
-        value="auth/auth_hosts.yaml",
+        key="control_auth_file_path",
         help="Path to local host auth YAML (kept out of git).",
     )
     auto_login_timeout_seconds = st.sidebar.number_input(
         "Auto login timeout (sec)",
         min_value=5,
         max_value=300,
-        value=40,
+        key="control_auto_login_timeout_seconds",
         step=1,
     )
     humanize = st.sidebar.checkbox(
         "Human-like crawl pacing",
-        value=False,
+        key="control_humanize",
         help="Use randomized pauses, reading delays, and natural click timing to reduce bot-like behavior.",
     )
-    selector_debug = st.sidebar.checkbox("Selector debug", value=False)
-    require_answers = st.sidebar.checkbox("Require answers", value=True)
-    stop_on_missing_answers = st.sidebar.checkbox("Stop if answers missing", value=False)
-    auto_learn_profiles = st.sidebar.checkbox("Auto learn profiles", value=True)
+    selector_debug = st.sidebar.checkbox("Selector debug", key="control_selector_debug")
+    require_answers = st.sidebar.checkbox("Require answers", key="control_require_answers")
+    stop_on_missing_answers = st.sidebar.checkbox("Stop if answers missing", key="control_stop_on_missing_answers")
+    auto_learn_profiles = st.sidebar.checkbox("Auto learn profiles", key="control_auto_learn_profiles")
     records_output_name = st.sidebar.text_input(
         "Records file name",
-        value="records.jsonl",
+        key="records_output_name",
         help="Use .jsonl or .json. If .json is entered, crawler writes .jsonl and maintains a matching .json mirror.",
     )
-    st.session_state.records_output_name = records_output_name.strip() or "records.jsonl"
+    normalized_records_output_name = records_output_name.strip() or "records.jsonl"
 
-    max_records = st.sidebar.number_input("Max records", min_value=1, max_value=5000, value=1000)
+    max_records = st.sidebar.number_input(
+        "Max records",
+        min_value=1,
+        max_value=5000,
+        key="control_max_records",
+    )
     questions_per_file = st.sidebar.number_input(
         "Questions per file",
         min_value=1,
         max_value=5000,
-        value=300,
+        key="control_questions_per_file",
         help="Split records into numbered files after this many questions",
     )
     max_turns = st.sidebar.number_input(
         "Max turns",
         min_value=10,
         max_value=10000,
-        value=800,
         key="control_max_turns",
     )
-    start_index = st.sidebar.number_input("Start index", min_value=1, max_value=100000, value=1)
-    min_confidence = st.sidebar.number_input("Min confidence", min_value=0.0, max_value=1.0, value=0.65, step=0.01)
-    min_quality_score = st.sidebar.number_input("Min quality score", min_value=0.0, max_value=1.0, value=0.72, step=0.01)
-    model = st.sidebar.text_input("Model", value=DEFAULT_DASHBOARD_MODEL)
+    start_index = st.sidebar.number_input(
+        "Start index",
+        min_value=1,
+        max_value=100000,
+        key="control_start_index",
+    )
+    min_confidence = st.sidebar.number_input(
+        "Min confidence",
+        min_value=0.0,
+        max_value=1.0,
+        step=0.01,
+        key="control_min_confidence",
+    )
+    min_quality_score = st.sidebar.number_input(
+        "Min quality score",
+        min_value=0.0,
+        max_value=1.0,
+        step=0.01,
+        key="control_min_quality_score",
+    )
+    model = st.sidebar.text_input("Model", key="control_model")
     orchestration_mode = st.sidebar.selectbox(
         "Orchestration mode",
-        options=["hybrid_gap_fill", "deterministic_only", "llm_orchestrator"],
-        index=0,
+        options=list(DASHBOARD_ORCHESTRATION_MODES),
         help="hybrid_gap_fill uses deterministic crawling and invokes Copilot only on extraction gaps.",
         key="control_orchestration_mode",
     )
+
+    dashboard_settings = {
+        "start_url": start_url.strip(),
+        "control_resume": bool(resume),
+        "control_headless": bool(headless),
+        "control_prompt_for_login_at_start": bool(prompt_for_login_at_start),
+        "control_enable_auto_login": bool(enable_auto_login),
+        "control_auth_file_path": auth_file_path.strip() or "auth/auth_hosts.yaml",
+        "control_auto_login_timeout_seconds": int(auto_login_timeout_seconds),
+        "control_humanize": bool(humanize),
+        "control_selector_debug": bool(selector_debug),
+        "control_require_answers": bool(require_answers),
+        "control_stop_on_missing_answers": bool(stop_on_missing_answers),
+        "control_auto_learn_profiles": bool(auto_learn_profiles),
+        "records_output_name": normalized_records_output_name,
+        "control_max_records": int(max_records),
+        "control_questions_per_file": int(questions_per_file),
+        "control_max_turns": int(max_turns),
+        "control_start_index": int(start_index),
+        "control_min_confidence": float(min_confidence),
+        "control_min_quality_score": float(min_quality_score),
+        "control_model": model.strip() or DEFAULT_DASHBOARD_MODEL,
+        "control_orchestration_mode": orchestration_mode,
+    }
+    if dashboard_settings != st.session_state.get("dashboard_last_saved_settings"):
+        save_dashboard_settings(OUTPUT_DIR, dashboard_settings)
+        st.session_state.dashboard_last_saved_settings = dashboard_settings
+
     st.sidebar.caption(
         "Use a model available in your Copilot account (default: gpt-5.4)."
     )
@@ -301,11 +549,7 @@ def main() -> None:
         committed_orchestration_mode = str(
             st.session_state.get("control_orchestration_mode", orchestration_mode),
         )
-        if committed_orchestration_mode not in {
-            "hybrid_gap_fill",
-            "deterministic_only",
-            "llm_orchestrator",
-        }:
+        if committed_orchestration_mode not in DASHBOARD_ORCHESTRATION_MODES:
             committed_orchestration_mode = orchestration_mode
 
         if not start_url.strip():
@@ -329,7 +573,7 @@ def main() -> None:
                 stop_on_missing_answers=stop_on_missing_answers,
                 auto_learn_profiles=auto_learn_profiles,
                 selector_debug=selector_debug,
-                records_output_name=(records_output_name.strip() or "records.jsonl"),
+                records_output_name=normalized_records_output_name,
                 model=model.strip() or "gpt-5",
                 prompt_for_login_at_start=prompt_for_login_at_start,
                 enable_auto_login=enable_auto_login,
@@ -385,6 +629,7 @@ def main() -> None:
                         else "default profile logic"
                     ),
                 )
+                manager.add_local_log(f"Python executable: {command[0]}")
                 st.success(message)
             else:
                 st.warning(message)

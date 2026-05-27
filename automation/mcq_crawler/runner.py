@@ -346,6 +346,12 @@ class CrawlRunner:
                     max_candidates=self.config.max_page_candidates,
                 )
 
+            candidates = await self._retry_low_coverage_candidate_extraction(
+                browser=browser,
+                state=state,
+                candidates=candidates,
+            )
+
             if not candidates:
                 single_candidate = await browser.extract_candidate()
                 candidates = [single_candidate]
@@ -444,6 +450,7 @@ class CrawlRunner:
             if not moved:
                 if not has_next:
                     state.stop_reason = "verified_no_next_page"
+                    state.navigation_stop_snapshot = self._build_navigation_stop_snapshot(state)
                     break
                 state.consecutive_failures += 1
                 state.last_warning = "navigation_no_change"
@@ -455,6 +462,7 @@ class CrawlRunner:
                     state.stop_reason = "navigation_out_of_scope"
                     state.last_warning = "navigation_out_of_scope"
                     state.current_url = next_url
+                    state.navigation_stop_snapshot = self._build_navigation_stop_snapshot(state)
                     break
 
                 state.consecutive_failures = 0
@@ -469,6 +477,75 @@ class CrawlRunner:
             state.stop_reason = "turn_limit_reached"
 
         await self._save_checkpoint(browser, state, checkpoint_store)
+
+    async def _retry_low_coverage_candidate_extraction(
+        self,
+        *,
+        browser: BrowserRuntime,
+        state: RuntimeState,
+        candidates: list[ExtractionCandidate],
+    ) -> list[ExtractionCandidate]:
+        if not candidates:
+            return candidates
+
+        baseline_count = len(candidates)
+        previous_page_count = max(0, int(state.last_page_candidates_found))
+        if previous_page_count < 8:
+            return candidates
+
+        low_coverage_threshold = max(6, int(previous_page_count * 0.65))
+        if baseline_count >= low_coverage_threshold:
+            return candidates
+
+        await browser.ensure_browse_mode_ready()
+        await browser.wait_for_exam_content_ready(timeout_ms=1800)
+        refreshed = await browser.extract_page_candidates(
+            max_candidates=self.config.max_page_candidates,
+        )
+        if not refreshed:
+            state.notes["last_low_coverage_retry"] = {
+                "baseline_count": baseline_count,
+                "refreshed_count": 0,
+                "merged_count": baseline_count,
+                "previous_page_count": previous_page_count,
+                "threshold": low_coverage_threshold,
+            }
+            return candidates
+
+        merged: list[ExtractionCandidate] = []
+        seen: set[str] = set()
+        for candidate in [*candidates, *refreshed]:
+            signature = self._candidate_signature(candidate)
+            if signature in seen:
+                continue
+            seen.add(signature)
+            merged.append(candidate)
+
+        state.notes["last_low_coverage_retry"] = {
+            "baseline_count": baseline_count,
+            "refreshed_count": len(refreshed),
+            "merged_count": len(merged),
+            "previous_page_count": previous_page_count,
+            "threshold": low_coverage_threshold,
+        }
+        return merged
+
+    def _candidate_signature(self, candidate: ExtractionCandidate) -> str:
+        question = " ".join((candidate.question or "").split()).strip().lower()
+        options = [" ".join((option or "").split()).strip().lower() for option in candidate.option_texts]
+        return f"{question}|{'|'.join(options)}"
+
+    def _build_navigation_stop_snapshot(self, state: RuntimeState) -> dict[str, Any]:
+        return {
+            "stop_reason": state.stop_reason,
+            "current_url": state.current_url,
+            "last_warning": state.last_warning,
+            "last_navigation_decision": state.notes.get("last_navigation_decision", {}),
+            "last_next_candidates": state.notes.get("last_next_candidates", {}),
+            "last_low_coverage_retry": state.notes.get("last_low_coverage_retry", {}),
+            "current_page_extraction_diagnostics": state.current_page_extraction_diagnostics,
+            "last_page_extraction_diagnostics": state.last_page_extraction_diagnostics,
+        }
 
     async def _attempt_save_candidate(self, toolbox: CopilotToolbox, candidate: ExtractionCandidate) -> None:
         options = options_to_map(candidate.option_texts)

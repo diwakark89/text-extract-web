@@ -12,6 +12,7 @@ RECENT_URLS_FILE_ENV = "MCQ_DASHBOARD_RECENT_URLS_PATH"
 RECENT_STORE_SCHEMA_VERSION = 1
 RECENT_SITES_KEY = "recent_sites"
 PROFILE_BY_HOST_KEY = "profile_by_host"
+DASHBOARD_SETTINGS_KEY = "dashboard_settings"
 
 
 def _recent_store_file(output_dir: Path) -> Path:
@@ -170,7 +171,23 @@ def _empty_recent_store() -> dict[str, Any]:
         "schema_version": RECENT_STORE_SCHEMA_VERSION,
         RECENT_SITES_KEY: [],
         PROFILE_BY_HOST_KEY: {},
+        DASHBOARD_SETTINGS_KEY: {},
     }
+
+
+def _sanitize_dashboard_settings(raw: object) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+
+    cleaned: dict[str, Any] = {}
+    for key, value in raw.items():
+        setting_key = str(key).strip()
+        if not setting_key:
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            cleaned[setting_key] = value
+
+    return cleaned
 
 
 def _normalize_recent_store(raw: object, *, max_items: int) -> dict[str, Any]:
@@ -216,6 +233,8 @@ def _normalize_recent_store(raw: object, *, max_items: int) -> dict[str, Any]:
             if host_key and profile_value:
                 cleaned[host_key] = profile_value
         store[PROFILE_BY_HOST_KEY] = cleaned
+
+    store[DASHBOARD_SETTINGS_KEY] = _sanitize_dashboard_settings(raw.get(DASHBOARD_SETTINGS_KEY))
 
     store[RECENT_SITES_KEY] = store[RECENT_SITES_KEY][:max_items]
     return store
@@ -322,4 +341,20 @@ def save_profile_for_url(
         profile_map.pop(host, None)
 
     store[PROFILE_BY_HOST_KEY] = profile_map
+    _write_recent_store(output_dir, store, max_items=max_items)
+
+
+def load_dashboard_settings(output_dir: Path, *, max_items: int = 20) -> dict[str, Any]:
+    store = _load_recent_store(output_dir, max_items=max_items)
+    return _sanitize_dashboard_settings(store.get(DASHBOARD_SETTINGS_KEY))
+
+
+def save_dashboard_settings(
+    output_dir: Path,
+    settings: dict[str, Any],
+    *,
+    max_items: int = 20,
+) -> None:
+    store = _load_recent_store(output_dir, max_items=max_items)
+    store[DASHBOARD_SETTINGS_KEY] = _sanitize_dashboard_settings(settings)
     _write_recent_store(output_dir, store, max_items=max_items)

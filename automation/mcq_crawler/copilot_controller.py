@@ -282,6 +282,7 @@ class CopilotToolbox:
             self.state.last_page_saved = self.state.current_page_saved
             self.state.last_page_skipped = self.state.current_page_skipped
             self.state.last_page_llm_assists = self.state.current_page_llm_assists
+            self.state.last_page_extraction_diagnostics = dict(self.state.current_page_extraction_diagnostics)
             self.state.pages_processed += 1
 
         self.state.current_page_url = current_url
@@ -289,6 +290,7 @@ class CopilotToolbox:
         self.state.current_page_saved = 0
         self.state.current_page_skipped = 0
         self.state.current_page_llm_assists = 0
+        self.state.current_page_extraction_diagnostics = {}
 
     def _save_candidate_record(
         self,
