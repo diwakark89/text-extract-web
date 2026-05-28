@@ -1281,6 +1281,7 @@ class BrowserRuntime:
 
         ranked: list[tuple[int, int]] = []
         ranked_details: list[dict[str, Any]] = []
+        skipped_details: list[dict[str, Any]] = []
         skipped_out_of_scope = 0
         upper_bound = min(count, 30)
 
@@ -1381,6 +1382,17 @@ class BrowserRuntime:
 
             if out_of_scope:
                 skipped_out_of_scope += 1
+                skipped_details.append(
+                    {
+                        "reason": "out_of_scope",
+                        "index": index,
+                        "text": text[:80],
+                        "href": href_raw[:180],
+                        "resolved_url": resolved_url[:180],
+                        "target_path": target_path[:180],
+                        "rel": rel[:30],
+                    },
+                )
                 continue
 
             ranked.append((score, index))
@@ -1395,6 +1407,7 @@ class BrowserRuntime:
             )
 
         ranked_details.sort(key=lambda item: int(item.get("score", 0)), reverse=True)
+        skipped_details.sort(key=lambda item: int(item.get("index", 0)))
         self.state.notes["last_next_candidates"] = {
             "selector": selector_label,
             "min_score": min_score,
@@ -1403,6 +1416,7 @@ class BrowserRuntime:
             "ranked_count": len(ranked),
             "skipped_out_of_scope": skipped_out_of_scope,
             "top_ranked": ranked_details[:5],
+            "top_skipped": skipped_details[:5],
         }
 
         if not ranked:
@@ -1444,8 +1458,9 @@ class BrowserRuntime:
             raise RuntimeError("Browser page not initialized")
 
         target_count = max(1, int(max_candidates or DEFAULT_MAX_PAGE_CANDIDATES))
-        max_passes = 8
+        max_passes = 12
         stable_rounds = 0
+        bottom_settle_rounds = 0
         previous_counts: tuple[int, int] | None = None
         best_visible = 0
         best_total = 0
@@ -1454,6 +1469,7 @@ class BrowserRuntime:
             "visibleRootCount": 0,
             "didScroll": False,
             "scrollY": 0,
+            "nearBottom": False,
         }
 
         for pass_index in range(max_passes):
@@ -1484,9 +1500,7 @@ class BrowserRuntime:
                           for (const node of nodes) {
                             if (!node || seen.has(node)) continue;
                             seen.add(node);
-                            if (clean(node.innerText).length > 0) {
-                              roots.push(node);
-                            }
+                                                        roots.push(node);
                           }
                         }
                         return roots;
@@ -1512,6 +1526,14 @@ class BrowserRuntime:
                           target.scrollIntoView({ block: "end", inline: "nearest" });
                           didScroll = true;
                         }
+
+                                                const nudge = Math.max(180, Math.round(window.innerHeight * 0.65));
+                                                const beforeNudge = window.scrollY || 0;
+                                                window.scrollBy(0, nudge);
+                                                const afterNudge = window.scrollY || 0;
+                                                if (Math.abs(afterNudge - beforeNudge) > 0) {
+                                                    didScroll = true;
+                                                }
                       } else {
                         const delta = Math.max(300, Math.round(window.innerHeight * 0.75));
                         window.scrollBy(0, delta);
@@ -1519,6 +1541,11 @@ class BrowserRuntime:
                       }
 
                       const afterY = window.scrollY || 0;
+                                            const maxScrollY = Math.max(
+                                                0,
+                                                (document.documentElement.scrollHeight || 0) - (window.innerHeight || 0),
+                                            );
+                                            const nearBottom = maxScrollY <= 0 || afterY >= maxScrollY - 24;
 
                       return {
                         rootCount: roots.length,
@@ -1526,6 +1553,7 @@ class BrowserRuntime:
                         didScroll,
                         scrollY: afterY,
                         scrollDelta: Math.abs(afterY - beforeY),
+                                                nearBottom,
                       };
                     }
                     """,
@@ -1547,12 +1575,14 @@ class BrowserRuntime:
                 did_scroll = bool(snapshot.get("didScroll", False))
                 scroll_y = int(snapshot.get("scrollY", 0) or 0)
                 scroll_delta = int(snapshot.get("scrollDelta", 0) or 0)
+                near_bottom = bool(snapshot.get("nearBottom", False))
             else:
                 root_count = 0
                 visible_count = 0
                 did_scroll = False
                 scroll_y = 0
                 scroll_delta = 0
+                near_bottom = False
 
             last_snapshot = {
                 "rootCount": root_count,
@@ -1560,6 +1590,7 @@ class BrowserRuntime:
                 "didScroll": did_scroll,
                 "scrollY": scroll_y,
                 "scrollDelta": scroll_delta,
+                "nearBottom": near_bottom,
             }
 
             best_visible = max(best_visible, visible_count)
@@ -1573,9 +1604,25 @@ class BrowserRuntime:
                 stable_rounds += 1
             else:
                 stable_rounds = 0
+                bottom_settle_rounds = 0
             previous_counts = current_counts
 
-            if stable_rounds >= 2:
+            if near_bottom and root_count > 0 and root_count < target_count:
+                bottom_settle_rounds += 1
+                if bottom_settle_rounds <= 4:
+                    if self.config.humanize:
+                        await self._human_pause(
+                            min_ms=max(180, self.config.human_delay_min_ms),
+                            max_ms=max(420, self.config.human_delay_max_ms + 120),
+                            reason="materialize_bottom_settle",
+                        )
+                    else:
+                        await asyncio.sleep(0.42)
+                    continue
+            else:
+                bottom_settle_rounds = 0
+
+            if stable_rounds >= 4:
                 break
 
             if not did_scroll and scroll_delta == 0 and root_count == 0:

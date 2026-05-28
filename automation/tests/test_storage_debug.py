@@ -14,6 +14,10 @@ from mcq_crawler.storage import JsonlStore
 from mcq_crawler.models import MCQRecord
 
 
+def _records_json_path(root: Path, name: str) -> Path:
+    return root / "json" / name
+
+
 def _build_record(index: int) -> MCQRecord:
     return MCQRecord(
         index=index,
@@ -81,7 +85,7 @@ class SelectorDebugStorageTests(unittest.TestCase):
             store.append_record(record)
             store.append_error({"reason": "validation_failed", "question": "bad"})
 
-            records_json = json.loads((root / "records.json").read_text(encoding="utf-8"))
+            records_json = json.loads(_records_json_path(root, "records.json").read_text(encoding="utf-8"))
             errors_json = json.loads((root / "errors.json").read_text(encoding="utf-8"))
 
             self.assertIsInstance(records_json, list)
@@ -122,7 +126,7 @@ class SelectorDebugStorageTests(unittest.TestCase):
             store.append_record(first_record)
             store.append_record(second_record)
 
-            records_json = json.loads((root / "records.json").read_text(encoding="utf-8"))
+            records_json = json.loads(_records_json_path(root, "records.json").read_text(encoding="utf-8"))
             self.assertEqual(len(records_json), 2)
             self.assertEqual(records_json[0]["question"], "Q1")
             self.assertEqual(records_json[1]["question"], "Q2")
@@ -143,6 +147,26 @@ class SelectorDebugStorageTests(unittest.TestCase):
             self.assertEqual(len(errors_json), 1)
             self.assertEqual(errors_json[0]["reason"], "timeout")
 
+    def test_legacy_root_records_json_is_migrated_to_json_subfolder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "records.json").write_text(
+                json.dumps([{"index": 1, "question": "Legacy Q1"}], ensure_ascii=True),
+                encoding="utf-8",
+            )
+
+            store = JsonlStore(
+                output_path=root / "records.jsonl",
+                error_path=root / "errors.jsonl",
+            )
+            store.append_record(_build_record(2))
+
+            self.assertFalse((root / "records.json").exists())
+            migrated = json.loads(_records_json_path(root, "records.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(migrated), 2)
+            self.assertEqual(migrated[0]["question"], "Legacy Q1")
+            self.assertEqual(migrated[1]["question"], "Q2")
+
 
 class SplitRecordsStorageTests(unittest.TestCase):
     def test_under_limit_keeps_single_base_records_file(self) -> None:
@@ -161,7 +185,7 @@ class SplitRecordsStorageTests(unittest.TestCase):
             self.assertTrue((root / "records.jsonl").exists())
             self.assertFalse((root / "records_1.jsonl").exists())
 
-            records_json = json.loads((root / "records.json").read_text(encoding="utf-8"))
+            records_json = json.loads(_records_json_path(root, "records.json").read_text(encoding="utf-8"))
             self.assertEqual(len(records_json), 3)
 
     def test_crossing_limit_creates_numbered_records_files(self) -> None:
@@ -186,8 +210,8 @@ class SplitRecordsStorageTests(unittest.TestCase):
             self.assertEqual(len(first_lines), 3)
             self.assertEqual(len(second_lines), 2)
 
-            first_json = json.loads((root / "records_1.json").read_text(encoding="utf-8"))
-            second_json = json.loads((root / "records_2.json").read_text(encoding="utf-8"))
+            first_json = json.loads(_records_json_path(root, "records_1.json").read_text(encoding="utf-8"))
+            second_json = json.loads(_records_json_path(root, "records_2.json").read_text(encoding="utf-8"))
             self.assertEqual(len(first_json), 3)
             self.assertEqual(len(second_json), 2)
 

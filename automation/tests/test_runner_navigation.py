@@ -54,6 +54,28 @@ def _sample_candidate_two() -> ExtractionCandidate:
     )
 
 
+def _sequenced_candidates(prefix: str, start: int, count: int) -> list[ExtractionCandidate]:
+    candidates: list[ExtractionCandidate] = []
+    for index in range(start, start + count):
+        candidates.append(
+            ExtractionCandidate(
+                question=f"{prefix} question {index}?",
+                option_texts=[
+                    f"A. Option A{index}",
+                    f"B. Option B{index}",
+                    f"C. Option C{index}",
+                    f"D. Option D{index}",
+                ],
+                answer_text="Answer(s): C",
+                confidence=0.95,
+                quality_score=0.95,
+                warnings=[],
+                used_selectors={},
+            ),
+        )
+    return candidates
+
+
 class _StubBrowser:
     def __init__(
         self,
@@ -62,6 +84,7 @@ class _StubBrowser:
         click_next_result: bool,
         fingerprint_changed: bool,
         next_url_after_click: str = "",
+        extract_page_candidates_responses: list[list[ExtractionCandidate]] | None = None,
     ) -> None:
         self.page = SimpleNamespace(
             url="https://www.examtopics.com/exams/amazon/aws-certified-cloud-practitioner-clf-c02/view/",
@@ -70,7 +93,9 @@ class _StubBrowser:
         self._click_next_result = click_next_result
         self._fingerprint_changed = fingerprint_changed
         self._next_url_after_click = next_url_after_click
+        self._extract_page_candidates_responses = list(extract_page_candidates_responses or [])
         self.click_calls = 0
+        self.extract_page_candidates_calls = 0
         self.human_delay_calls = 0
         self.human_read_pause_calls = 0
         self.human_idle_break_calls = 0
@@ -88,6 +113,9 @@ class _StubBrowser:
         return True
 
     async def extract_page_candidates(self, max_candidates: int = 20) -> list[ExtractionCandidate]:
+        self.extract_page_candidates_calls += 1
+        if self._extract_page_candidates_responses:
+            return self._extract_page_candidates_responses.pop(0)
         return [_sample_candidate()]
 
     async def extract_candidate(self) -> ExtractionCandidate:
@@ -257,6 +285,45 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(browser.opened_urls, ["https://examcademy.com/auth/login", start_url])
             self.assertEqual(state.current_url, start_url)
             self.assertTrue(state.notes.get("auto_login_succeeded"))
+
+    async def test_low_coverage_retry_keeps_refreshing_until_threshold_recovers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            config = RunConfig(
+                start_url="https://examcademy.com/exams/amazon/aws-certified-developer-associate/18",
+                domain_profiles_dir=tmp_dir / "profiles" / "domains",
+                output_path=tmp_dir / "output" / "records.jsonl",
+                error_path=tmp_dir / "output" / "errors.jsonl",
+                checkpoint_path=tmp_dir / "output" / "checkpoint.json",
+                screenshot_dir=tmp_dir / "output" / "screenshots",
+                workspace_dir=tmp_dir,
+            )
+
+            runner = CrawlRunner(config)
+            state = RuntimeState(max_records=config.max_records, next_index=1)
+            state.last_page_candidates_found = 25
+
+            baseline = _sequenced_candidates("baseline", 1, 11)
+            first_refresh = _sequenced_candidates("baseline", 1, 11)
+            second_refresh = _sequenced_candidates("baseline", 1, 11) + _sequenced_candidates("recovered", 12, 14)
+
+            browser = _StubBrowser(
+                has_next_page=False,
+                click_next_result=False,
+                fingerprint_changed=False,
+                extract_page_candidates_responses=[first_refresh, second_refresh],
+            )
+
+            merged = await runner._retry_low_coverage_candidate_extraction(
+                browser=browser,
+                state=state,
+                candidates=baseline,
+            )
+
+            self.assertEqual(len(merged), 25)
+            self.assertEqual(browser.extract_page_candidates_calls, 2)
+            self.assertEqual(state.notes["last_low_coverage_retry"]["merged_count"], 25)
+            self.assertEqual(state.notes["last_low_coverage_retry"]["attempts"], 2)
 
     async def _run_once(
         self,
@@ -660,9 +727,10 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             )
 
             retry_summary = state.notes.get("last_low_coverage_retry", {})
-            self.assertEqual(calls["count"], 2)
+            self.assertEqual(calls["count"], 4)
             self.assertEqual(retry_summary.get("baseline_count"), 1)
             self.assertEqual(retry_summary.get("refreshed_count"), 2)
+            self.assertEqual(retry_summary.get("attempts"), 3)
             self.assertEqual(retry_summary.get("merged_count"), 2)
             self.assertEqual(state.records_written, 2)
 

@@ -37,7 +37,7 @@ Dashboard notes:
 Output files:
 
 - Records: `automation/output/records.jsonl`
-- Records (parseable JSON array): `automation/output/records.json`
+- Records (parseable JSON array): `automation/output/json/records.json`
 - Rejected records: `automation/output/errors.jsonl`
 - Rejected records (parseable JSON array): `automation/output/errors.json`
 - Checkpoint: `automation/output/checkpoint.json`
@@ -48,7 +48,7 @@ If total saved records exceed `--questions-per-file` (default `300`), records
 are split into numbered files with matching JSON mirrors:
 
 - `automation/output/records_1.jsonl`, `automation/output/records_2.jsonl`, ...
-- `automation/output/records_1.json`, `automation/output/records_2.json`, ...
+- `automation/output/json/records_1.json`, `automation/output/json/records_2.json`, ...
 
 ## 3) Use ready-made profiles
 

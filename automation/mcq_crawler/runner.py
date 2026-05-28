@@ -497,38 +497,47 @@ class CrawlRunner:
         if baseline_count >= low_coverage_threshold:
             return candidates
 
-        await browser.ensure_browse_mode_ready()
-        await browser.wait_for_exam_content_ready(timeout_ms=1800)
-        refreshed = await browser.extract_page_candidates(
-            max_candidates=self.config.max_page_candidates,
-        )
-        if not refreshed:
-            state.notes["last_low_coverage_retry"] = {
-                "baseline_count": baseline_count,
-                "refreshed_count": 0,
-                "merged_count": baseline_count,
-                "previous_page_count": previous_page_count,
-                "threshold": low_coverage_threshold,
-            }
-            return candidates
+        best_merged = list(candidates)
+        refresh_counts: list[int] = []
+        max_attempts = 3
 
-        merged: list[ExtractionCandidate] = []
-        seen: set[str] = set()
-        for candidate in [*candidates, *refreshed]:
-            signature = self._candidate_signature(candidate)
-            if signature in seen:
-                continue
-            seen.add(signature)
-            merged.append(candidate)
+        for attempt in range(max_attempts):
+            await browser.ensure_browse_mode_ready()
+            await browser.wait_for_exam_content_ready(timeout_ms=1800 + (attempt * 700))
+            refreshed = await browser.extract_page_candidates(
+                max_candidates=self.config.max_page_candidates,
+            )
+            refresh_counts.append(len(refreshed))
+
+            if refreshed:
+                merged: list[ExtractionCandidate] = []
+                seen: set[str] = set()
+                for candidate in [*best_merged, *refreshed]:
+                    signature = self._candidate_signature(candidate)
+                    if signature in seen:
+                        continue
+                    seen.add(signature)
+                    merged.append(candidate)
+
+                if len(merged) > len(best_merged):
+                    best_merged = merged
+
+            if len(best_merged) >= low_coverage_threshold:
+                break
+
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(0.3 * (attempt + 1))
 
         state.notes["last_low_coverage_retry"] = {
             "baseline_count": baseline_count,
-            "refreshed_count": len(refreshed),
-            "merged_count": len(merged),
+            "refreshed_count": refresh_counts[-1] if refresh_counts else 0,
+            "refresh_counts": refresh_counts,
+            "merged_count": len(best_merged),
             "previous_page_count": previous_page_count,
             "threshold": low_coverage_threshold,
+            "attempts": len(refresh_counts),
         }
-        return merged
+        return best_merged
 
     def _candidate_signature(self, candidate: ExtractionCandidate) -> str:
         question = " ".join((candidate.question or "").split()).strip().lower()

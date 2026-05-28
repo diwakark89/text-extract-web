@@ -50,14 +50,14 @@ Dashboard capabilities:
 - Select base and learned domain profiles.
 - Send manual prompt input (`c/o/s/q` or selector JSON) to the running process.
 - Output is written in both JSONL and parseable JSON array mirrors:
-  - `automation/output/records.jsonl` and `automation/output/records.json`
+  - `automation/output/records.jsonl` and `automation/output/json/records.json`
   - `automation/output/errors.jsonl` and `automation/output/errors.json`
 
 When records exceed the per-file limit (`--questions-per-file`, default `300`),
 records rotate into numbered files using `_1`, `_2`, `_3`, and so on:
 
 - `automation/output/records_1.jsonl`, `automation/output/records_2.jsonl`, ...
-- `automation/output/records_1.json`, `automation/output/records_2.json`, ...
+- `automation/output/json/records_1.json`, `automation/output/json/records_2.json`, ...
 
 Model note:
 

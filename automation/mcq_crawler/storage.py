@@ -17,7 +17,8 @@ class JsonlStore:
         records_written: int = 0,
     ) -> None:
         self.base_output_path = output_path
-        self.base_output_json_path = self.base_output_path.with_suffix(".json")
+        self.records_json_dir = self.base_output_path.parent / "json"
+        self.base_output_json_path = self._json_mirror_path_for(self.base_output_path)
         self.error_path = error_path
         self.debug_path = debug_path
         self.error_json_path = self.error_path.with_suffix(".json")
@@ -26,12 +27,16 @@ class JsonlStore:
         self.current_output_file_index: int | None = None
         self.records_in_current_output_file = 0
 
+        self.records_json_dir.mkdir(parents=True, exist_ok=True)
         self.error_path.parent.mkdir(parents=True, exist_ok=True)
         self.error_json_path.parent.mkdir(parents=True, exist_ok=True)
         if self.debug_path is not None:
             self.debug_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._initialize_record_target()
+
+    def _json_mirror_path_for(self, output_path: Path) -> Path:
+        return self.records_json_dir / f"{output_path.stem}.json"
 
     def _initialize_record_target(self) -> None:
         if self.records_written <= self.questions_per_file:
@@ -49,9 +54,13 @@ class JsonlStore:
 
     def _set_record_paths(self, output_path: Path) -> None:
         self.output_path = output_path
-        self.output_json_path = self.output_path.with_suffix(".json")
+        self.output_json_path = self._json_mirror_path_for(self.output_path)
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self.output_json_path.parent.mkdir(parents=True, exist_ok=True)
+
+        legacy_json_path = self.output_path.with_suffix(".json")
+        if legacy_json_path != self.output_json_path:
+            self._move_if_exists(legacy_json_path, self.output_json_path)
 
     def _split_output_path(self, index: int) -> Path:
         return self.base_output_path.with_name(
@@ -68,7 +77,7 @@ class JsonlStore:
 
     def _enable_split_mode_after_boundary(self) -> None:
         first_chunk_path = self._split_output_path(1)
-        first_chunk_json_path = first_chunk_path.with_suffix(".json")
+        first_chunk_json_path = self._json_mirror_path_for(first_chunk_path)
 
         self._move_if_exists(self.base_output_path, first_chunk_path)
         self._move_if_exists(self.base_output_json_path, first_chunk_json_path)

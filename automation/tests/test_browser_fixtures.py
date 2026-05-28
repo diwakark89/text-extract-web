@@ -114,6 +114,34 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(candidates), 25)
         self.assertIn("Deferred row question 25", candidates[-1].question)
 
+    async def test_extract_page_candidates_waits_for_delayed_bottom_growth(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "delayed_bottom_growth.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.runtime.state.selector_overrides["question_containers"] = ["div.exam-row"]
+        self.runtime.state.selector_overrides["question"] = [".question-content > p"]
+        self.runtime.state.selector_overrides["options"] = [".question-content .mc-question > ul > li.mc-option"]
+        self.runtime.state.selector_overrides["answer"] = [".question-content .mc-question .correct-answer"]
+
+        candidates = await self.runtime.extract_page_candidates(max_candidates=40)
+
+        self.assertEqual(len(candidates), 25)
+        self.assertIn("Delayed growth question 25", candidates[-1].question)
+
+    async def test_extract_page_candidates_waits_for_slow_delayed_bottom_growth(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "slow_delayed_bottom_growth.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.runtime.state.selector_overrides["question_containers"] = ["div.exam-row"]
+        self.runtime.state.selector_overrides["question"] = [".question-content > p"]
+        self.runtime.state.selector_overrides["options"] = [".question-content .mc-question > ul > li.mc-option"]
+        self.runtime.state.selector_overrides["answer"] = [".question-content .mc-question .correct-answer"]
+
+        candidates = await self.runtime.extract_page_candidates(max_candidates=40)
+
+        self.assertEqual(len(candidates), 25)
+        self.assertIn("Slow delayed growth question 25", candidates[-1].question)
+
     async def test_extract_page_candidates_keeps_single_valid_container(self) -> None:
         fixture = (
             PROJECT_ROOT / "tests" / "fixtures" / "single_question_container_with_noise.html"
@@ -227,6 +255,19 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(clicked)
         self.assertRegex(self.runtime.page.url, r"/off_scope_only_next_arrow\.html$")
+
+    async def test_has_next_page_records_skipped_candidate_details(self) -> None:
+        fixture = (PROJECT_ROOT / "tests" / "fixtures" / "off_scope_only_next_arrow.html").resolve().as_uri()
+        await self.runtime.open_url(fixture)
+        self.runtime.state.notes["crawl_scope_path_prefix"] = "/exams/amazon/aws-certified-solutions-architect-associate-saa-c03"
+
+        has_next = await self.runtime.has_next_page()
+
+        self.assertFalse(has_next)
+        snapshot = self.runtime.state.notes.get("last_next_candidates", {})
+        top_skipped = snapshot.get("top_skipped", [])
+        self.assertTrue(top_skipped)
+        self.assertEqual(top_skipped[0].get("reason"), "out_of_scope")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Slow Delayed Bottom Growth Fixture</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      main {
+        padding: 14px;
+      }
+
+      .exam-row {
+        min-height: 210px;
+        border: 1px solid #d8d8d8;
+        border-radius: 8px;
+        margin-bottom: 18px;
+        padding: 10px;
+      }
+
+      .question-content > p {
+        margin: 0 0 10px;
+      }
+
+      .mc-question ul {
+        margin: 0 0 10px 20px;
+        padding: 0;
+      }
+
+      .correct-answer {
+        color: #0f5e13;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Rows appear after sustained bottom settle</h1>
+      <div id="rows"></div>
+    </main>
+
+    <script>
+      (() => {
+        const host = document.getElementById("rows");
+        let appendTimer = 0;
+        let appended = false;
+
+        const rowHtml = (index) => `
+          <div class="question-content">
+            <p>Slow delayed growth question ${index}: Which option is correct?</p>
+            <div class="mc-question">
+              <ul>
+                <li class="mc-option">A. Option A${index}</li>
+                <li class="mc-option">B. Option B${index}</li>
+                <li class="mc-option">C. Option C${index}</li>
+                <li class="mc-option">D. Option D${index}</li>
+              </ul>
+              <p class="correct-answer">Answer(s): A</p>
+            </div>
+          </div>
+        `;
+
+        const appendRow = (index) => {
+          const row = document.createElement("div");
+          row.className = "exam-row";
+          row.dataset.idx = String(index);
+          row.innerHTML = rowHtml(index);
+          host.appendChild(row);
+        };
+
+        for (let i = 1; i <= 19; i += 1) {
+          appendRow(i);
+        }
+
+        const nearBottom = () =>
+          window.scrollY + window.innerHeight >=
+          document.documentElement.scrollHeight - 80;
+
+        const scheduleAppend = () => {
+          if (appended || appendTimer || !nearBottom()) {
+            return;
+          }
+
+          appendTimer = window.setTimeout(() => {
+            appendTimer = 0;
+            if (appended || !nearBottom()) {
+              return;
+            }
+
+            appended = true;
+            for (let i = 20; i <= 25; i += 1) {
+              appendRow(i);
+            }
+          }, 1300);
+        };
+
+        window.addEventListener("scroll", scheduleAppend, { passive: true });
+        window.addEventListener("load", scheduleAppend);
+      })();
+    </script>
+  </body>
+</html>
