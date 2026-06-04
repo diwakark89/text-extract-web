@@ -270,6 +270,22 @@ class CopilotToolbox:
         self.state.notes[PAGE_CANDIDATE_SOURCE_URL_KEY] = current_url
         self.state.notes[PAGE_CANDIDATE_QUEUE_KEY] = [item.model_dump() for item in queue]
 
+    def _current_page_image_skip_count(self) -> int:
+        diagnostics = self.state.current_page_extraction_diagnostics
+        if not isinstance(diagnostics, dict):
+            return 0
+
+        value = diagnostics.get("image_based_skipped_candidates", 0)
+        if isinstance(value, bool):
+            return 0
+        if isinstance(value, (int, float)):
+            return max(0, int(value))
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.isdigit():
+                return int(stripped)
+        return 0
+
     def _start_page_tracking(self, current_url: str) -> None:
         if not current_url:
             return
@@ -281,14 +297,17 @@ class CopilotToolbox:
             self.state.last_page_candidates_found = self.state.current_page_candidates_found
             self.state.last_page_saved = self.state.current_page_saved
             self.state.last_page_skipped = self.state.current_page_skipped
+            self.state.last_page_image_skipped = self.state.current_page_image_skipped
             self.state.last_page_llm_assists = self.state.current_page_llm_assists
             self.state.last_page_extraction_diagnostics = dict(self.state.current_page_extraction_diagnostics)
+            self.state.image_based_skipped_total += self.state.current_page_image_skipped
             self.state.pages_processed += 1
 
         self.state.current_page_url = current_url
         self.state.current_page_candidates_found = 0
         self.state.current_page_saved = 0
         self.state.current_page_skipped = 0
+        self.state.current_page_image_skipped = 0
         self.state.current_page_llm_assists = 0
         self.state.current_page_extraction_diagnostics = {}
 
@@ -595,6 +614,11 @@ class CopilotToolbox:
                     len(page_candidates),
                 )
 
+        self.state.current_page_image_skipped = max(
+            self.state.current_page_image_skipped,
+            self._current_page_image_skip_count(),
+        )
+
         extraction_mode = "single"
         if queue:
             candidate = queue.pop(0)
@@ -639,6 +663,7 @@ class CopilotToolbox:
         result_payload["page_candidates_found"] = self.state.current_page_candidates_found
         result_payload["page_saved"] = self.state.current_page_saved
         result_payload["page_skipped"] = self.state.current_page_skipped
+        result_payload["page_image_skipped"] = self.state.current_page_image_skipped
 
         return _success(result_payload, "candidate extracted")
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from collections import deque
 from pathlib import Path
 from typing import Any
@@ -358,3 +359,31 @@ def save_dashboard_settings(
     store = _load_recent_store(output_dir, max_items=max_items)
     store[DASHBOARD_SETTINGS_KEY] = _sanitize_dashboard_settings(settings)
     _write_recent_store(output_dir, store, max_items=max_items)
+
+
+def clean_output_directory_for_run(output_dir: Path) -> tuple[int, int]:
+    """Remove generated output artifacts while preserving dashboard metadata store."""
+    output_root = output_dir.resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    preserved: set[Path] = set()
+    recent_store_path = _recent_store_file(output_root)
+    try:
+        preserved.add(recent_store_path.resolve())
+    except FileNotFoundError:
+        pass
+
+    removed_files = 0
+    removed_dirs = 0
+    for child in output_root.iterdir():
+        resolved_child = child.resolve()
+        if resolved_child in preserved:
+            continue
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=False)
+            removed_dirs += 1
+        else:
+            child.unlink(missing_ok=True)
+            removed_files += 1
+
+    return removed_files, removed_dirs

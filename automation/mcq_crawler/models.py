@@ -90,12 +90,15 @@ class RuntimeState:
     current_page_candidates_found: int = 0
     current_page_saved: int = 0
     current_page_skipped: int = 0
+    current_page_image_skipped: int = 0
     last_page_candidates_found: int = 0
     last_page_saved: int = 0
     last_page_skipped: int = 0
+    last_page_image_skipped: int = 0
     current_page_llm_assists: int = 0
     last_page_llm_assists: int = 0
     pages_processed: int = 0
+    image_based_skipped_total: int = 0
     llm_assist_attempts_total: int = 0
     llm_assist_saved_count: int = 0
     llm_assist_last_trigger_reason: str = ""

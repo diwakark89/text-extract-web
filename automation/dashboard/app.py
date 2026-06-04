@@ -19,6 +19,7 @@ from dashboard.cli_builder import (
     resolve_records_output_path,
 )
 from dashboard.file_views import (
+    clean_output_directory_for_run,
     list_yaml_profiles,
     load_dashboard_settings,
     load_profile_for_url,
@@ -55,6 +56,7 @@ DASHBOARD_PERSISTED_SETTING_KEYS = (
     "control_require_answers",
     "control_stop_on_missing_answers",
     "control_auto_learn_profiles",
+    "control_clean_output_before_run",
     "records_output_name",
     "control_max_records",
     "control_questions_per_file",
@@ -242,6 +244,12 @@ def main() -> None:
         )
         if st.session_state.control_auto_learn_profiles is None:
             st.session_state.control_auto_learn_profiles = True
+    if "control_clean_output_before_run" not in st.session_state:
+        st.session_state.control_clean_output_before_run = _as_bool(
+            persisted_settings.get("control_clean_output_before_run"),
+        )
+        if st.session_state.control_clean_output_before_run is None:
+            st.session_state.control_clean_output_before_run = False
     if "records_output_name" not in st.session_state:
         st.session_state.records_output_name = str(
             persisted_settings.get("records_output_name") or "records.jsonl",
@@ -361,6 +369,32 @@ def main() -> None:
 
     selected_profile = profile_by_value.get(selected_profile_value)
 
+    records_output_name = st.sidebar.text_input(
+        "Records file name",
+        key="records_output_name",
+        help="Use .jsonl or .json. If .json is entered, crawler writes .jsonl and maintains a matching .json mirror.",
+    )
+    normalized_records_output_name = records_output_name.strip() or "records.jsonl"
+
+    max_records = st.sidebar.number_input(
+        "Max records",
+        min_value=1,
+        max_value=5000,
+        key="control_max_records",
+    )
+    questions_per_file = st.sidebar.number_input(
+        "Questions per file",
+        min_value=1,
+        max_value=5000,
+        key="control_questions_per_file",
+        help="Split records into numbered files after this many questions",
+    )
+    max_turns = st.sidebar.number_input(
+        "Max turns",
+        min_value=10,
+        max_value=10000,
+        key="control_max_turns",
+    )
     resume = st.sidebar.checkbox("Resume from checkpoint", key="control_resume")
     headless = st.sidebar.checkbox("Headless", key="control_headless")
     prompt_for_login_at_start = st.sidebar.checkbox(
@@ -394,31 +428,10 @@ def main() -> None:
     require_answers = st.sidebar.checkbox("Require answers", key="control_require_answers")
     stop_on_missing_answers = st.sidebar.checkbox("Stop if answers missing", key="control_stop_on_missing_answers")
     auto_learn_profiles = st.sidebar.checkbox("Auto learn profiles", key="control_auto_learn_profiles")
-    records_output_name = st.sidebar.text_input(
-        "Records file name",
-        key="records_output_name",
-        help="Use .jsonl or .json. If .json is entered, crawler writes .jsonl and maintains a matching .json mirror.",
-    )
-    normalized_records_output_name = records_output_name.strip() or "records.jsonl"
-
-    max_records = st.sidebar.number_input(
-        "Max records",
-        min_value=1,
-        max_value=5000,
-        key="control_max_records",
-    )
-    questions_per_file = st.sidebar.number_input(
-        "Questions per file",
-        min_value=1,
-        max_value=5000,
-        key="control_questions_per_file",
-        help="Split records into numbered files after this many questions",
-    )
-    max_turns = st.sidebar.number_input(
-        "Max turns",
-        min_value=10,
-        max_value=10000,
-        key="control_max_turns",
+    clean_output_before_run = st.sidebar.checkbox(
+        "Clean output folder before run",
+        key="control_clean_output_before_run",
+        help="Delete prior crawler output files and folders before starting this run.",
     )
     start_index = st.sidebar.number_input(
         "Start index",
@@ -461,6 +474,7 @@ def main() -> None:
         "control_require_answers": bool(require_answers),
         "control_stop_on_missing_answers": bool(stop_on_missing_answers),
         "control_auto_learn_profiles": bool(auto_learn_profiles),
+        "control_clean_output_before_run": bool(clean_output_before_run),
         "records_output_name": normalized_records_output_name,
         "control_max_records": int(max_records),
         "control_questions_per_file": int(questions_per_file),
@@ -557,6 +571,12 @@ def main() -> None:
         else:
             profile_path = str(selected_profile.resolve()) if selected_profile is not None else None
 
+            if clean_output_before_run:
+                removed_files, removed_dirs = clean_output_directory_for_run(OUTPUT_DIR)
+                st.info(
+                    f"Output folder cleaned before run ({removed_files} files, {removed_dirs} folders removed)."
+                )
+
             options = DashboardRunOptions(
                 start_url=start_url.strip(),
                 profile_path=profile_path,
@@ -644,12 +664,25 @@ def main() -> None:
     checkpoint = read_checkpoint(checkpoint_path)
 
     current_page_llm_assists = _as_int(checkpoint.get("current_page_llm_assists")) if isinstance(checkpoint, dict) else None
+    current_page_image_skipped = _as_int(checkpoint.get("current_page_image_skipped")) if isinstance(checkpoint, dict) else None
+    image_based_skipped_total = _as_int(checkpoint.get("image_based_skipped_total")) if isinstance(checkpoint, dict) else None
     llm_assist_attempts_total = _as_int(checkpoint.get("llm_assist_attempts_total")) if isinstance(checkpoint, dict) else None
     llm_assist_saved_count = _as_int(checkpoint.get("llm_assist_saved_count")) if isinstance(checkpoint, dict) else None
     llm_assist_last_trigger_reason = (
         str(checkpoint.get("llm_assist_last_trigger_reason") or "").strip()
         if isinstance(checkpoint, dict)
         else ""
+    )
+    current_page_extraction_diagnostics = (
+        checkpoint.get("current_page_extraction_diagnostics")
+        if isinstance(checkpoint, dict) and isinstance(checkpoint.get("current_page_extraction_diagnostics"), dict)
+        else {}
+    )
+    image_question_skipped_current_page = _as_int(
+        current_page_extraction_diagnostics.get("image_based_question_skipped_candidates"),
+    )
+    image_options_skipped_current_page = _as_int(
+        current_page_extraction_diagnostics.get("image_based_options_skipped_candidates"),
     )
 
     summary = st.session_state.get("last_run_summary")
@@ -680,6 +713,17 @@ def main() -> None:
         s1.metric("Assist attempts", str(llm_assist_attempts_total or 0))
         s2.metric("Assist saves", str(llm_assist_saved_count or 0))
         s3.metric("Current page assists", str(current_page_llm_assists or 0))
+        i1, i2 = st.columns(2)
+        i1.metric(
+            "Image-based skips (total)",
+            str((image_based_skipped_total or 0) + (current_page_image_skipped or 0)),
+        )
+        i2.metric("Image-based skips (current page)", str(current_page_image_skipped or 0))
+        st.caption(
+            "Current page image-skip reasons: "
+            f"question image-only={image_question_skipped_current_page or 0}, "
+            f"options image-only={image_options_skipped_current_page or 0}"
+        )
         st.write(f"URL: {summary.get('url', '')}")
         st.write(f"Profile: {summary.get('profile', '')}")
         st.write(

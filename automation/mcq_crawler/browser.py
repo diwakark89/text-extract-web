@@ -190,6 +190,21 @@ async def _extract_page_candidates_impl(
             """
             (el, { questionSelectors, optionSelectors, answerSelectors }) => {
               const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+                            const hasMedia = (node) => {
+                                if (!node) return false;
+                                try {
+                                    if (node.matches && node.matches("img, picture, svg, canvas, figure")) {
+                                        return true;
+                                    }
+                                } catch {
+                                    // Ignore selector matching issues and continue with subtree checks.
+                                }
+                                if (node.querySelector("img, picture, svg, canvas, figure")) {
+                                    return true;
+                                }
+                                const style = String((node.getAttribute && node.getAttribute("style")) || "").toLowerCase();
+                                return style.includes("background-image");
+                            };
               const uniq = (items) => {
                 const out = [];
                 for (const item of items) {
@@ -199,6 +214,7 @@ async def _extract_page_candidates_impl(
               };
 
               const firstText = (selectors) => {
+                                let mediaOnly = false;
                 for (const selector of selectors || []) {
                   let nodes = [];
                   try {
@@ -210,14 +226,19 @@ async def _extract_page_candidates_impl(
                   for (const node of nodes) {
                     const text = clean(node.innerText);
                     if (text) {
-                      return { text, selector };
+                                            return { text, selector, hasMedia: hasMedia(node), mediaOnly: false };
+                                        }
+                                        if (hasMedia(node)) {
+                                            mediaOnly = true;
                     }
                   }
                 }
-                return { text: "", selector: "" };
+                                return { text: "", selector: "", hasMedia: false, mediaOnly };
               };
 
               const collectOptions = (selectors) => {
+                                let mediaOnlyCount = 0;
+                                let itemsWithMediaCount = 0;
                 for (const selector of selectors || []) {
                   let nodes = [];
                   try {
@@ -230,7 +251,14 @@ async def _extract_page_candidates_impl(
                   for (const node of nodes) {
                     if (node.matches("li")) {
                       const text = clean(node.innerText);
-                      if (text) options.push(text);
+                                            if (text) {
+                                                options.push(text);
+                                                if (hasMedia(node)) {
+                                                    itemsWithMediaCount += 1;
+                                                }
+                                            } else if (hasMedia(node)) {
+                                                mediaOnlyCount += 1;
+                                            }
                       continue;
                     }
 
@@ -238,22 +266,46 @@ async def _extract_page_candidates_impl(
                     if (listItems.length > 0) {
                       for (const li of listItems) {
                         const text = clean(li.innerText);
-                        if (text) options.push(text);
+                                                if (text) {
+                                                    options.push(text);
+                                                    if (hasMedia(li)) {
+                                                        itemsWithMediaCount += 1;
+                                                    }
+                                                } else if (hasMedia(li)) {
+                                                    mediaOnlyCount += 1;
+                                                }
                       }
                       continue;
                     }
 
                     const text = clean(node.innerText);
-                    if (text) options.push(text);
+                                        if (text) {
+                                            options.push(text);
+                                            if (hasMedia(node)) {
+                                                itemsWithMediaCount += 1;
+                                            }
+                                        } else if (hasMedia(node)) {
+                                            mediaOnlyCount += 1;
+                                        }
                   }
 
                   const deduped = uniq(options);
                   if (deduped.length >= 2) {
-                    return { items: deduped, selector };
+                                        return {
+                                            items: deduped,
+                                            selector,
+                                            mediaOnlyCount,
+                                            itemsWithMediaCount,
+                                        };
                   }
                 }
 
-                return { items: [], selector: "" };
+                                return {
+                                    items: [],
+                                    selector: "",
+                                    mediaOnlyCount,
+                                    itemsWithMediaCount,
+                                };
               };
 
               const question = firstText(questionSelectors);
@@ -264,6 +316,10 @@ async def _extract_page_candidates_impl(
                 question: question.text,
                 option_texts: options.items,
                 answer_text: answer.text,
+                                question_has_media: question.hasMedia,
+                                question_media_only: question.mediaOnly,
+                                options_media_only_count: options.mediaOnlyCount,
+                                options_with_media_count: options.itemsWithMediaCount,
                 used_selectors: {
                   question: question.selector,
                   options: options.selector,
@@ -366,6 +422,10 @@ async def _extract_page_candidates_impl(
                 if isinstance(candidate_payload, dict):
                     question_value = _clean_text(str(candidate_payload.get("question", "")))
                     option_values = candidate_payload.get("option_texts")
+                    question_media_only = bool(candidate_payload.get("question_media_only"))
+                    question_has_media = bool(candidate_payload.get("question_has_media"))
+                    options_media_only_count = int(candidate_payload.get("options_media_only_count") or 0)
+                    options_with_media_count = int(candidate_payload.get("options_with_media_count") or 0)
                     if isinstance(option_values, list):
                         cleaned_options = [
                             _clean_text(str(value))
@@ -384,9 +444,15 @@ async def _extract_page_candidates_impl(
                         break
 
                     if not question_value:
-                        last_skip_reason = "empty_question"
+                        if question_media_only or question_has_media:
+                            last_skip_reason = "image_based_question"
+                        else:
+                            last_skip_reason = "empty_question"
                     elif len(cleaned_options) < 2:
-                        last_skip_reason = "insufficient_options"
+                        if options_media_only_count > 0 or options_with_media_count > 0:
+                            last_skip_reason = "image_based_options"
+                        else:
+                            last_skip_reason = "insufficient_options"
                     else:
                         last_skip_reason = "payload_invalid"
                 else:
@@ -626,6 +692,12 @@ async def _extract_page_candidates_impl(
         "best_root_count": best_root_count,
         "root_selector_counts": root_selector_counts,
         "scanned_root_skip_reasons": root_skip_reasons,
+        "image_based_question_skipped_candidates": root_skip_reasons.get("image_based_question", 0),
+        "image_based_options_skipped_candidates": root_skip_reasons.get("image_based_options", 0),
+        "image_based_skipped_candidates": (
+            root_skip_reasons.get("image_based_question", 0)
+            + root_skip_reasons.get("image_based_options", 0)
+        ),
         "root_exception_count": root_exception_count,
         "raw_payload_count": len(raw),
         "unique_candidate_count": len(candidates),

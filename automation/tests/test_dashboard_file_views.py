@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from dashboard.file_views import (
+    clean_output_directory_for_run,
     list_yaml_profiles,
     load_dashboard_settings,
     load_profile_for_url,
@@ -216,6 +217,50 @@ class DashboardFileViewTests(unittest.TestCase):
                 urls[0],
                 "https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1",
             )
+
+    def test_clean_output_directory_for_run_removes_generated_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            (output_dir / "records.jsonl").write_text("{}\n", encoding="utf-8")
+            (output_dir / "errors.jsonl").write_text("{}\n", encoding="utf-8")
+            screenshots_dir = output_dir / "screenshots"
+            screenshots_dir.mkdir(parents=True, exist_ok=True)
+            (screenshots_dir / "shot.png").write_text("img", encoding="utf-8")
+
+            removed_files, removed_dirs = clean_output_directory_for_run(output_dir)
+
+            self.assertEqual(removed_files, 2)
+            self.assertEqual(removed_dirs, 1)
+            self.assertFalse((output_dir / "records.jsonl").exists())
+            self.assertFalse((output_dir / "errors.jsonl").exists())
+            self.assertFalse(screenshots_dir.exists())
+
+    def test_clean_output_directory_preserves_recent_store_when_in_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            save_dashboard_settings(
+                output_dir,
+                {
+                    "control_headless": True,
+                    "control_clean_output_before_run": True,
+                },
+            )
+            recent_store = output_dir / "dashboard_recent_urls.json"
+            self.assertTrue(recent_store.exists())
+            (output_dir / "records.jsonl").write_text("{}\n", encoding="utf-8")
+
+            removed_files, removed_dirs = clean_output_directory_for_run(output_dir)
+
+            self.assertEqual(removed_files, 1)
+            self.assertEqual(removed_dirs, 0)
+            self.assertTrue(recent_store.exists())
+            settings = load_dashboard_settings(output_dir)
+            self.assertEqual(settings.get("control_headless"), True)
+            self.assertEqual(settings.get("control_clean_output_before_run"), True)
 
     def test_url_host_key_normalization(self) -> None:
         self.assertEqual(url_host_key("https://www.Example.com:8443/path"), "example.com")

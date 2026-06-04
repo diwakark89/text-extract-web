@@ -174,6 +174,28 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
             ".question-content .mc-question > ul > li.mc-option",
         )
 
+    async def test_extract_page_candidates_tracks_image_based_skip_counts(self) -> None:
+        fixture = (
+            PROJECT_ROOT / "tests" / "fixtures" / "image_only_question_with_valid_sibling.html"
+        ).resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.runtime.state.selector_overrides["question_containers"] = ["div.exam-row"]
+        self.runtime.state.selector_overrides["question"] = [".question-content > p"]
+        self.runtime.state.selector_overrides["options"] = [".question-content .mc-question > li.mc-option"]
+        self.runtime.state.selector_overrides["answer"] = [".question-content .correct-answer"]
+
+        candidates = await self.runtime.extract_page_candidates(max_candidates=5)
+
+        self.assertEqual(len(candidates), 1)
+        diagnostics = self.runtime.state.current_page_extraction_diagnostics
+        skip_reasons = diagnostics.get("scanned_root_skip_reasons", {})
+        self.assertEqual(skip_reasons.get("image_based_question"), 1)
+        self.assertEqual(skip_reasons.get("image_based_options"), None)
+        self.assertEqual(diagnostics.get("image_based_question_skipped_candidates"), 1)
+        self.assertEqual(diagnostics.get("image_based_options_skipped_candidates"), 0)
+        self.assertEqual(diagnostics.get("image_based_skipped_candidates"), 1)
+
     async def test_reveal_answer_deduplicates_overlapping_selectors(self) -> None:
         fixture = (
             PROJECT_ROOT / "tests" / "fixtures" / "reveal_toggle_duplicate_selectors.html"

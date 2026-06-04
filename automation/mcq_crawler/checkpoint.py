@@ -51,12 +51,15 @@ class CheckpointStore:
             "current_page_candidates_found": state.current_page_candidates_found,
             "current_page_saved": state.current_page_saved,
             "current_page_skipped": state.current_page_skipped,
+            "current_page_image_skipped": state.current_page_image_skipped,
             "current_page_llm_assists": state.current_page_llm_assists,
             "last_page_candidates_found": state.last_page_candidates_found,
             "last_page_saved": state.last_page_saved,
             "last_page_skipped": state.last_page_skipped,
+            "last_page_image_skipped": state.last_page_image_skipped,
             "last_page_llm_assists": state.last_page_llm_assists,
             "pages_processed": state.pages_processed,
+            "image_based_skipped_total": state.image_based_skipped_total,
             "llm_assist_attempts_total": state.llm_assist_attempts_total,
             "llm_assist_saved_count": state.llm_assist_saved_count,
             "llm_assist_last_trigger_reason": state.llm_assist_last_trigger_reason,
@@ -104,6 +107,9 @@ class CheckpointStore:
         state.current_page_skipped = int(
             snapshot.get("current_page_skipped", state.current_page_skipped),
         )
+        state.current_page_image_skipped = int(
+            snapshot.get("current_page_image_skipped", state.current_page_image_skipped),
+        )
         state.current_page_llm_assists = int(
             snapshot.get("current_page_llm_assists", state.current_page_llm_assists),
         )
@@ -116,10 +122,16 @@ class CheckpointStore:
         state.last_page_skipped = int(
             snapshot.get("last_page_skipped", state.last_page_skipped),
         )
+        state.last_page_image_skipped = int(
+            snapshot.get("last_page_image_skipped", state.last_page_image_skipped),
+        )
         state.last_page_llm_assists = int(
             snapshot.get("last_page_llm_assists", state.last_page_llm_assists),
         )
         state.pages_processed = int(snapshot.get("pages_processed", state.pages_processed))
+        state.image_based_skipped_total = int(
+            snapshot.get("image_based_skipped_total", state.image_based_skipped_total),
+        )
         state.llm_assist_attempts_total = int(
             snapshot.get("llm_assist_attempts_total", state.llm_assist_attempts_total),
         )

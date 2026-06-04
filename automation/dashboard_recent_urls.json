@@ -3,7 +3,7 @@
   "recent_sites": [
     {
       "host": "examcademy.com",
-      "last_url": "https://examcademy.com/exams/amazon/aws-certified-security-specialty/1"
+      "last_url": "https://examcademy.com/exams/amazon/aws-devops-engineer-professional/1"
     },
     {
       "host": "free-braindumps.com",
@@ -15,7 +15,7 @@
     "free-braindumps.com": "C:\\DK_World\\IT\\MyProjects\\Skillify\\text-extract-web\\automation\\profiles\\free_braindumps_aws_ccp_broad.yaml"
   },
   "dashboard_settings": {
-    "start_url": "https://examcademy.com/exams/amazon/aws-certified-security-specialty/1",
+    "start_url": "https://examcademy.com/exams/amazon/aws-devops-engineer-professional/1",
     "control_resume": false,
     "control_headless": false,
     "control_prompt_for_login_at_start": true,
@@ -27,10 +27,11 @@
     "control_require_answers": true,
     "control_stop_on_missing_answers": false,
     "control_auto_learn_profiles": true,
-    "records_output_name": "aws-certified-security-specialty.jsonl",
+    "control_clean_output_before_run": true,
+    "records_output_name": "aws-devops-engineer-professional.jsonl",
     "control_max_records": 1000,
     "control_questions_per_file": 50,
-    "control_max_turns": 800,
+    "control_max_turns": 1500,
     "control_start_index": 1,
     "control_min_confidence": 0.65,
     "control_min_quality_score": 0.72,
