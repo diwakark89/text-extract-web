@@ -14,10 +14,10 @@ _meta:
   selector_success_counts:
     question:
       .question-content > p: 9384
-      '[class*=''question'']': 49
+      '[class*=''question'']': 615
     options:
       .question-content .mc-question > ul > li.mc-option: 9384
-      '[class*=''option'']': 49
+      '[class*=''option'']': 615
     answer:
       .question-content .mc-question li.mc-option.mc-option-missed: 9384
-      strong: 49
+      strong: 615

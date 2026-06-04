@@ -16,6 +16,7 @@ if str(AUTOMATION_DIR) not in sys.path:
 from dashboard.cli_builder import (
     DashboardRunOptions,
     build_crawler_command,
+    normalize_records_output_name,
     resolve_records_output_path,
 )
 from dashboard.file_views import (
@@ -251,9 +252,10 @@ def main() -> None:
         if st.session_state.control_clean_output_before_run is None:
             st.session_state.control_clean_output_before_run = False
     if "records_output_name" not in st.session_state:
-        st.session_state.records_output_name = str(
-            persisted_settings.get("records_output_name") or "records.jsonl",
-        ).strip() or "records.jsonl"
+        st.session_state.records_output_name = normalize_records_output_name(
+            str(persisted_settings.get("records_output_name") or "records.jsonl").strip()
+            or "records.jsonl",
+        )
     if "control_max_records" not in st.session_state:
         saved_max_records = _as_int(persisted_settings.get("control_max_records"))
         st.session_state.control_max_records = (
@@ -372,9 +374,9 @@ def main() -> None:
     records_output_name = st.sidebar.text_input(
         "Records file name",
         key="records_output_name",
-        help="Use .jsonl or .json. If .json is entered, crawler writes .jsonl and maintains a matching .json mirror.",
+        help="Extension is optional. Dashboard automatically saves records as .jsonl.",
     )
-    normalized_records_output_name = records_output_name.strip() or "records.jsonl"
+    normalized_records_output_name = normalize_records_output_name(records_output_name)
 
     max_records = st.sidebar.number_input(
         "Max records",
@@ -663,27 +665,7 @@ def main() -> None:
     checkpoint_path = OUTPUT_DIR / "checkpoint.json"
     checkpoint = read_checkpoint(checkpoint_path)
 
-    current_page_llm_assists = _as_int(checkpoint.get("current_page_llm_assists")) if isinstance(checkpoint, dict) else None
-    current_page_image_skipped = _as_int(checkpoint.get("current_page_image_skipped")) if isinstance(checkpoint, dict) else None
-    image_based_skipped_total = _as_int(checkpoint.get("image_based_skipped_total")) if isinstance(checkpoint, dict) else None
-    llm_assist_attempts_total = _as_int(checkpoint.get("llm_assist_attempts_total")) if isinstance(checkpoint, dict) else None
-    llm_assist_saved_count = _as_int(checkpoint.get("llm_assist_saved_count")) if isinstance(checkpoint, dict) else None
-    llm_assist_last_trigger_reason = (
-        str(checkpoint.get("llm_assist_last_trigger_reason") or "").strip()
-        if isinstance(checkpoint, dict)
-        else ""
-    )
-    current_page_extraction_diagnostics = (
-        checkpoint.get("current_page_extraction_diagnostics")
-        if isinstance(checkpoint, dict) and isinstance(checkpoint.get("current_page_extraction_diagnostics"), dict)
-        else {}
-    )
-    image_question_skipped_current_page = _as_int(
-        current_page_extraction_diagnostics.get("image_based_question_skipped_candidates"),
-    )
-    image_options_skipped_current_page = _as_int(
-        current_page_extraction_diagnostics.get("image_based_options_skipped_candidates"),
-    )
+    total_extracted_questions = _as_int(checkpoint.get("records_written")) if isinstance(checkpoint, dict) else None
 
     summary = st.session_state.get("last_run_summary")
 
@@ -709,27 +691,9 @@ def main() -> None:
         c1.metric("Status", status)
         c2.metric("Started", summary.get("started_at", ""))
         c3.metric("Stopped", summary.get("stopped_at", "-") or "-")
-        s1, s2, s3 = st.columns(3)
-        s1.metric("Assist attempts", str(llm_assist_attempts_total or 0))
-        s2.metric("Assist saves", str(llm_assist_saved_count or 0))
-        s3.metric("Current page assists", str(current_page_llm_assists or 0))
-        i1, i2 = st.columns(2)
-        i1.metric(
-            "Image-based skips (total)",
-            str((image_based_skipped_total or 0) + (current_page_image_skipped or 0)),
-        )
-        i2.metric("Image-based skips (current page)", str(current_page_image_skipped or 0))
-        st.caption(
-            "Current page image-skip reasons: "
-            f"question image-only={image_question_skipped_current_page or 0}, "
-            f"options image-only={image_options_skipped_current_page or 0}"
-        )
+        st.metric("Total extracted questions", str(total_extracted_questions or 0))
         st.write(f"URL: {summary.get('url', '')}")
         st.write(f"Profile: {summary.get('profile', '')}")
-        st.write(
-            "Last assist trigger reason: "
-            + (llm_assist_last_trigger_reason if llm_assist_last_trigger_reason else "-")
-        )
         st.caption("Command")
         st.code(summary.get("command", ""), language="bash")
 
