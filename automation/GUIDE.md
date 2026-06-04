@@ -24,7 +24,7 @@ If you want a thin UI for triggering runs and inspecting logs/output while still
 using CLI behavior underneath:
 
 ```bash
-streamlit run dashboard/app.py
+streamlit run automation/dashboard/app.py
 ```
 
 Dashboard notes:

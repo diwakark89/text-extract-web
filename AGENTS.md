@@ -5,7 +5,7 @@
 This repository contains:
 
 - A Chrome Extension (Manifest V3) for extracting MCQ content from web pages using CSS selectors.
-- A standalone `automation/` crawler for Copilot SDK + Playwright based extraction.
+- A standalone `automation/` crawler for Playwright-based extraction.
 
 Core capabilities:
 

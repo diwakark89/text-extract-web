@@ -8,7 +8,7 @@ from rich.console import Console
 
 from mcq_crawler import RunConfig, run_crawl
 
-app = typer.Typer(help="Copilot SDK + Playwright MCQ crawler")
+app = typer.Typer(help="Playwright MCQ crawler")
 console = Console()
 
 
@@ -22,12 +22,6 @@ def run(
     debug_output: Path = typer.Option(Path("output/selector_debug.jsonl"), help="Selector debug JSONL path"),
     checkpoint: Path = typer.Option(Path("output/checkpoint.json"), help="Checkpoint file path"),
     screenshots: Path = typer.Option(Path("output/screenshots"), help="Screenshot directory"),
-    model: str = typer.Option("gpt-5", help="Copilot model name"),
-    orchestration_mode: str = typer.Option(
-        "hybrid_gap_fill",
-        "--orchestration-mode",
-        help="Execution mode: hybrid_gap_fill | deterministic_only | llm_orchestrator",
-    ),
     max_records: int = typer.Option(1000, help="Maximum records to save"),
     questions_per_file: int = typer.Option(
         300,
@@ -87,8 +81,6 @@ def run(
         debug_output_path=debug_output,
         checkpoint_path=checkpoint,
         screenshot_dir=screenshots,
-        model=model,
-        orchestration_mode=orchestration_mode,
         max_records=max_records,
         questions_per_file=questions_per_file,
         max_turns=max_turns,

@@ -38,17 +38,12 @@ class CheckpointResumeTests(unittest.TestCase):
             state.current_page_saved = 4
             state.current_page_skipped = 1
             state.current_page_image_skipped = 1
-            state.current_page_llm_assists = 1
             state.last_page_candidates_found = 5
             state.last_page_saved = 5
             state.last_page_skipped = 0
             state.last_page_image_skipped = 2
-            state.last_page_llm_assists = 2
             state.pages_processed = 3
             state.image_based_skipped_total = 6
-            state.llm_assist_attempts_total = 7
-            state.llm_assist_saved_count = 3
-            state.llm_assist_last_trigger_reason = "low_confidence"
             state.current_page_extraction_diagnostics = {
                 "root_selector": ".exam-row",
                 "raw_payload_count": 4,
@@ -92,17 +87,12 @@ class CheckpointResumeTests(unittest.TestCase):
             self.assertEqual(restored.current_page_saved, 4)
             self.assertEqual(restored.current_page_skipped, 1)
             self.assertEqual(restored.current_page_image_skipped, 1)
-            self.assertEqual(restored.current_page_llm_assists, 1)
             self.assertEqual(restored.last_page_candidates_found, 5)
             self.assertEqual(restored.last_page_saved, 5)
             self.assertEqual(restored.last_page_skipped, 0)
             self.assertEqual(restored.last_page_image_skipped, 2)
-            self.assertEqual(restored.last_page_llm_assists, 2)
             self.assertEqual(restored.pages_processed, 3)
             self.assertEqual(restored.image_based_skipped_total, 6)
-            self.assertEqual(restored.llm_assist_attempts_total, 7)
-            self.assertEqual(restored.llm_assist_saved_count, 3)
-            self.assertEqual(restored.llm_assist_last_trigger_reason, "low_confidence")
             self.assertEqual(restored.current_page_extraction_diagnostics["raw_payload_count"], 4)
             self.assertEqual(restored.last_page_extraction_diagnostics["raw_payload_count"], 5)
             self.assertEqual(

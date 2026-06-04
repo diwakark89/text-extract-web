@@ -13,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from mcq_crawler.checkpoint import CheckpointStore
 from mcq_crawler.config import RunConfig
-from mcq_crawler.copilot_controller import CopilotToolbox
+from mcq_crawler.crawl_toolbox import CrawlToolbox
 from mcq_crawler.models import ExtractionCandidate, RuntimeState
 from mcq_crawler.profile_store import SelectorProfileStore
 from mcq_crawler.runner import CrawlRunner
@@ -365,11 +365,10 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             )
 
             store = JsonlStore(config.output_path, config.error_path)
-            toolbox = CopilotToolbox(
+            toolbox = CrawlToolbox(
                 browser=browser,
                 store=store,
                 state=state,
-                screenshot_dir=config.screenshot_dir,
                 min_confidence=config.min_confidence,
                 min_quality_score=config.min_quality_score,
                 require_answers=config.require_answers,
@@ -464,7 +463,6 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
                 workspace_dir=tmp_dir,
                 max_records=50,
                 max_turns=1,
-                orchestration_mode="hybrid_gap_fill",
                 selector_debug=False,
             )
 
@@ -486,9 +484,6 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             await runner._attempt_save_candidate(toolbox, _sample_candidate())
 
             self.assertEqual(state.stop_reason, "answer_extraction_failed")
-            self.assertEqual(state.llm_assist_attempts_total, 0)
-            self.assertEqual(state.current_page_llm_assists, 0)
-
     async def test_headless_mode_auto_handles_stale_progress_without_manual_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
@@ -520,11 +515,10 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             )
 
             store = JsonlStore(config.output_path, config.error_path)
-            toolbox = CopilotToolbox(
+            toolbox = CrawlToolbox(
                 browser=browser,
                 store=store,
                 state=state,
-                screenshot_dir=config.screenshot_dir,
                 min_confidence=config.min_confidence,
                 min_quality_score=config.min_quality_score,
                 require_answers=config.require_answers,
@@ -578,11 +572,10 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             browser.page.url = config.start_url
 
             store = JsonlStore(config.output_path, config.error_path)
-            toolbox = CopilotToolbox(
+            toolbox = CrawlToolbox(
                 browser=browser,
                 store=store,
                 state=state,
-                screenshot_dir=config.screenshot_dir,
                 min_confidence=config.min_confidence,
                 min_quality_score=config.min_quality_score,
                 require_answers=config.require_answers,
@@ -638,11 +631,10 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             browser.page.url = config.start_url
 
             store = JsonlStore(config.output_path, config.error_path)
-            toolbox = CopilotToolbox(
+            toolbox = CrawlToolbox(
                 browser=browser,
                 store=store,
                 state=state,
-                screenshot_dir=config.screenshot_dir,
                 min_confidence=config.min_confidence,
                 min_quality_score=config.min_quality_score,
                 require_answers=config.require_answers,
@@ -705,11 +697,10 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             browser.extract_page_candidates = _extract_with_retry  # type: ignore[method-assign]
 
             store = JsonlStore(config.output_path, config.error_path)
-            toolbox = CopilotToolbox(
+            toolbox = CrawlToolbox(
                 browser=browser,
                 store=store,
                 state=state,
-                screenshot_dir=config.screenshot_dir,
                 min_confidence=config.min_confidence,
                 min_quality_score=config.min_quality_score,
                 require_answers=config.require_answers,

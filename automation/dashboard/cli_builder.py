@@ -11,7 +11,6 @@ import sys
 class DashboardRunOptions:
     start_url: str
     profile_path: str | None = None
-    orchestration_mode: str = "hybrid_gap_fill"
     resume: bool = False
     headless: bool = False
     max_records: int = 1000
@@ -24,7 +23,6 @@ class DashboardRunOptions:
     stop_on_missing_answers: bool = False
     auto_learn_profiles: bool = True
     selector_debug: bool = False
-    model: str = "gpt-5"
     prompt_for_login_at_start: bool = False
     enable_auto_login: bool = False
     auth_file_path: str = "auth/auth_hosts.yaml"
@@ -120,10 +118,6 @@ def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) ->
         options.start_url,
         "--output",
         str(records_output_path),
-        "--model",
-        options.model,
-        "--orchestration-mode",
-        options.orchestration_mode,
         "--max-records",
         str(options.max_records),
         "--questions-per-file",

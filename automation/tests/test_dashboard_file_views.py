@@ -37,7 +37,6 @@ class DashboardFileViewTests(unittest.TestCase):
                 output_dir,
                 {
                     "control_headless": True,
-                    "control_model": "gpt-5.4",
                     "control_max_records": 1200,
                     "ignored": ["not-serializable-for-settings"],
                 },
@@ -46,7 +45,6 @@ class DashboardFileViewTests(unittest.TestCase):
             settings = load_dashboard_settings(output_dir)
 
             self.assertEqual(settings.get("control_headless"), True)
-            self.assertEqual(settings.get("control_model"), "gpt-5.4")
             self.assertEqual(settings.get("control_max_records"), 1200)
             self.assertNotIn("ignored", settings)
 
@@ -55,7 +53,6 @@ class DashboardFileViewTests(unittest.TestCase):
             output_dir = Path(temp_dir)
             saved_settings = {
                 "control_headless": True,
-                "control_model": "gpt-5.4",
                 "records_output_name": "records_custom.jsonl",
             }
             save_dashboard_settings(output_dir, saved_settings)

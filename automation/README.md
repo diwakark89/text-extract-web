@@ -1,12 +1,12 @@
-# MCQ Crawler (Copilot SDK + Playwright)
+# MCQ Crawler (Playwright)
 
 This folder contains a fresh implementation for automated MCQ extraction.
 
 ## Goals
 
 - Multi-site extraction with adaptive selectors.
-- Copilot SDK as active page controller.
-- Local-only execution using already logged-in Copilot CLI.
+- Deterministic browser-driven extraction and validation.
+- Local-only execution with Playwright automation.
 - JSONL output with validation and checkpoint-friendly run state.
 - Human feedback loop for captcha/extraction failures.
 - Checkpoint-resume so interrupted runs can continue.
@@ -59,11 +59,6 @@ records rotate into numbered files using `_1`, `_2`, `_3`, and so on:
 - `automation/output/records_1.jsonl`, `automation/output/records_2.jsonl`, ...
 - `automation/output/json/records_1.json`, `automation/output/json/records_2.json`, ...
 
-Model note:
-
-- If you see `Model "..." is not available`, choose a model available to your account in the dashboard Model field (for example `gpt-4.1`) and run again.
-- If you see `Model "..." is not available`, choose a model available to your account in the dashboard Model field (for example `gpt-5.4`) and run again.
-
 Detailed step-by-step guide:
 
 - `automation/GUIDE.md`
@@ -83,7 +78,6 @@ Useful options:
 - `--headless/--no-headless` browser mode.
 - `--max-records` extraction cap.
 - `--questions-per-file` split records into multiple files after N questions (default `300`).
-- `--model` Copilot model, default `gpt-5`.
 - `--resume` resume from checkpoint file.
 - `--checkpoint` set checkpoint file path.
 - `--min-quality-score` enforce stronger persistence quality gate.
@@ -113,8 +107,6 @@ mcq-crawler run \
 
 ## Notes
 
-- No token or Copilot CLI path is required by default.
-- The SDK uses local Copilot CLI login (`use_logged_in_user=True`).
 - On captcha/low confidence, the runner prompts for user guidance and resumes.
 - Domain profiles are saved under `automation/profiles/domains/`.
 - Checkpoint state is saved to `automation/output/checkpoint.json` by default.

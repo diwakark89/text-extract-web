@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 from urllib.parse import urlparse
 
 import yaml
@@ -62,8 +61,6 @@ class RunConfig(BaseModel):
     checkpoint_path: Path = Path("output/checkpoint.json")
     screenshot_dir: Path = Path("output/screenshots")
     workspace_dir: Path = Path(".")
-    model: str = "gpt-5"
-    orchestration_mode: Literal["hybrid_gap_fill", "llm_orchestrator", "deterministic_only"] = "hybrid_gap_fill"
     max_records: int = 1000
     max_turns: int = 800
     max_page_candidates: int = 80
@@ -76,7 +73,6 @@ class RunConfig(BaseModel):
     auto_learn_profiles: bool = True
     max_consecutive_failures: int = 3
     navigation_retry_limit: int = 2
-    max_llm_assists_per_page: int = 1
     questions_per_file: int = Field(default=300, ge=1)
     selector_debug: bool = False
     headless: bool = False

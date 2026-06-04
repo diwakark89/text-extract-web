@@ -55,7 +55,6 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             start_index=3,
             min_confidence=0.7,
             min_quality_score=0.8,
-            model="gpt-5",
             records_output_name="records.jsonl",
         )
 

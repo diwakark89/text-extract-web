@@ -5,7 +5,7 @@ mcq_crawler/__init__.py
 mcq_crawler/browser.py
 mcq_crawler/checkpoint.py
 mcq_crawler/config.py
-mcq_crawler/copilot_controller.py
+mcq_crawler/crawl_toolbox.py
 mcq_crawler/models.py
 mcq_crawler/profile_store.py
 mcq_crawler/runner.py

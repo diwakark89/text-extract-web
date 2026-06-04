@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import os
 from pathlib import Path
 import shlex
 import sys
@@ -38,12 +37,6 @@ from dashboard.process_manager import DashboardProcessManager
 OUTPUT_DIR = AUTOMATION_DIR / "output"
 BASE_PROFILES_DIR = AUTOMATION_DIR / "profiles"
 LEARNED_PROFILES_DIR = BASE_PROFILES_DIR / "domains"
-DEFAULT_DASHBOARD_MODEL = os.getenv("MCQ_DASHBOARD_MODEL", "gpt-5.4")
-DASHBOARD_ORCHESTRATION_MODES = (
-    "hybrid_gap_fill",
-    "deterministic_only",
-    "llm_orchestrator",
-)
 DASHBOARD_PERSISTED_SETTING_KEYS = (
     "start_url",
     "control_resume",
@@ -65,8 +58,6 @@ DASHBOARD_PERSISTED_SETTING_KEYS = (
     "control_start_index",
     "control_min_confidence",
     "control_min_quality_score",
-    "control_model",
-    "control_orchestration_mode",
 )
 
 
@@ -302,17 +293,6 @@ def main() -> None:
             if saved_min_quality_score is not None
             else 0.72
         )
-    if "control_model" not in st.session_state:
-        st.session_state.control_model = str(
-            persisted_settings.get("control_model") or DEFAULT_DASHBOARD_MODEL,
-        ).strip() or DEFAULT_DASHBOARD_MODEL
-    if "control_orchestration_mode" not in st.session_state:
-        saved_orchestration_mode = str(
-            persisted_settings.get("control_orchestration_mode") or "",
-        ).strip()
-        if saved_orchestration_mode not in DASHBOARD_ORCHESTRATION_MODES:
-            saved_orchestration_mode = DASHBOARD_ORCHESTRATION_MODES[0]
-        st.session_state.control_orchestration_mode = saved_orchestration_mode
     if "dashboard_last_saved_settings" not in st.session_state:
         st.session_state.dashboard_last_saved_settings = {
             key: st.session_state.get(key)
@@ -455,14 +435,6 @@ def main() -> None:
         step=0.01,
         key="control_min_quality_score",
     )
-    model = st.sidebar.text_input("Model", key="control_model")
-    orchestration_mode = st.sidebar.selectbox(
-        "Orchestration mode",
-        options=list(DASHBOARD_ORCHESTRATION_MODES),
-        help="hybrid_gap_fill uses deterministic crawling and invokes Copilot only on extraction gaps.",
-        key="control_orchestration_mode",
-    )
-
     dashboard_settings = {
         "start_url": start_url.strip(),
         "control_resume": bool(resume),
@@ -484,16 +456,10 @@ def main() -> None:
         "control_start_index": int(start_index),
         "control_min_confidence": float(min_confidence),
         "control_min_quality_score": float(min_quality_score),
-        "control_model": model.strip() or DEFAULT_DASHBOARD_MODEL,
-        "control_orchestration_mode": orchestration_mode,
     }
     if dashboard_settings != st.session_state.get("dashboard_last_saved_settings"):
         save_dashboard_settings(OUTPUT_DIR, dashboard_settings)
         st.session_state.dashboard_last_saved_settings = dashboard_settings
-
-    st.sidebar.caption(
-        "Use a model available in your Copilot account (default: gpt-5.4)."
-    )
 
     st.html(
         """
@@ -562,12 +528,6 @@ def main() -> None:
         # Number/select widgets can lag a click in rapid UI interactions.
         # Launch only after settle reruns and read committed session values.
         committed_max_turns = int(st.session_state.get("control_max_turns", max_turns))
-        committed_orchestration_mode = str(
-            st.session_state.get("control_orchestration_mode", orchestration_mode),
-        )
-        if committed_orchestration_mode not in DASHBOARD_ORCHESTRATION_MODES:
-            committed_orchestration_mode = orchestration_mode
-
         if not start_url.strip():
             st.error("Start URL is required.")
         else:
@@ -582,7 +542,6 @@ def main() -> None:
             options = DashboardRunOptions(
                 start_url=start_url.strip(),
                 profile_path=profile_path,
-                orchestration_mode=committed_orchestration_mode,
                 resume=resume,
                 headless=headless,
                 max_records=int(max_records),
@@ -596,7 +555,6 @@ def main() -> None:
                 auto_learn_profiles=auto_learn_profiles,
                 selector_debug=selector_debug,
                 records_output_name=normalized_records_output_name,
-                model=model.strip() or "gpt-5",
                 prompt_for_login_at_start=prompt_for_login_at_start,
                 enable_auto_login=enable_auto_login,
                 auth_file_path=auth_file_path.strip() or "auth/auth_hosts.yaml",
@@ -670,18 +628,6 @@ def main() -> None:
     summary = st.session_state.get("last_run_summary")
 
     recent_logs = manager.get_logs(limit=120)
-    model_error = None
-    for event in recent_logs:
-        if "is not available" in event.text and "Model" in event.text:
-            model_error = event.text
-            break
-    if model_error:
-        st.error(
-            "Selected model is not available for this account. "
-            "Change the Model field to an available model (for example gpt-5.4) and start the run again."
-        )
-        st.caption(model_error)
-
     if summary:
         if status in {"completed", "failed"} and not summary.get("stopped_at"):
             summary["stopped_at"] = datetime.now(timezone.utc).isoformat()

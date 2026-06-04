@@ -14,66 +14,12 @@ from .auth import load_host_auth_config
 from .browser import BrowserRuntime, options_to_map, parse_answer_letters
 from .checkpoint import CheckpointStore
 from .config import RunConfig, domain_from_url, load_selector_profile
-from .copilot_controller import CopilotToolbox
+from .crawl_toolbox import CrawlToolbox
 from .models import ExtractionCandidate, RunSummary, RuntimeState
 from .profile_store import SelectorProfileStore
 from .storage import JsonlStore
-
-try:
-    from copilot import CopilotClient, SubprocessConfig
-    from copilot.generated.session_events import AssistantMessageData, SessionIdleData
-    from copilot.session import PermissionHandler
-except ImportError as exc:  # pragma: no cover
-    raise RuntimeError(
-        "github-copilot-sdk is required. Install dependencies in automation/ first.",
-    ) from exc
-
-
-SYSTEM_PROMPT = """
-You are an MCQ extraction controller operating browser tools.
-
-Objectives:
-1) Extract all high-quality MCQ records visible on the current page.
-2) Save valid records via save_current_record.
-3) Skip ambiguous or low-quality candidates and continue.
-4) Navigate to the next page and continue until limits are reached.
-
-Rules:
-- Always start by checking captcha status and page context when uncertain.
-- Use reveal_answer before extracting if answers are hidden.
-- If some candidates are ambiguous, keep saving valid ones instead of stopping.
-- If extraction confidence is low for the whole page or validation fails repeatedly, ask for selector overrides.
-- Do not stop because a certain record count feels sufficient; only stop on true terminal conditions.
-- Before calling stop_run for end-of-pagination, call has_next_page and stop only when it returns false.
-- Do not invent question/answer content. Use tool results only.
-""".strip()
-
-INITIAL_WAIT_TIMEOUT_SECONDS = 120
-TURN_WAIT_TIMEOUT_SECONDS = 90
 DEFAULT_AUTH_FILE_PATH = Path("auth/auth_hosts.yaml")
 LEGACY_AUTH_FILE_PATH = Path("profiles/auth_hosts.yaml")
-
-
-class SessionWaiter:
-    def __init__(self, console: Console) -> None:
-        self.console = console
-        self.done = asyncio.Event()
-        self.last_message = ""
-
-    def reset(self) -> None:
-        self.done = asyncio.Event()
-
-    def on_event(self, event: Any) -> None:
-        match event.data:
-            case AssistantMessageData() as data:
-                self.last_message = data.content or ""
-                if self.last_message.strip():
-                    preview = self.last_message.strip()
-                    if len(preview) > 600:
-                        preview = preview[:600] + " ..."
-                    self.console.print(f"[cyan]assistant[/cyan] {preview}")
-            case SessionIdleData():
-                self.done.set()
 
 
 async def _async_input(prompt: str) -> str:
@@ -147,11 +93,10 @@ class CrawlRunner:
                     if not continue_run:
                         await self._save_checkpoint(browser, state, checkpoint_store)
 
-            toolbox = CopilotToolbox(
+            toolbox = CrawlToolbox(
                 browser=browser,
                 store=store,
                 state=state,
-                screenshot_dir=self.config.screenshot_dir,
                 min_confidence=self.config.min_confidence,
                 min_quality_score=self.config.min_quality_score,
                 require_answers=self.config.require_answers,
@@ -169,22 +114,13 @@ class CrawlRunner:
             )
 
             if not state.stop_reason:
-                if self.config.orchestration_mode == "llm_orchestrator":
-                    await self._run_llm_orchestrated_loop(
-                        browser=browser,
-                        state=state,
-                        profile_store=profile_store,
-                        checkpoint_store=checkpoint_store,
-                        toolbox=toolbox,
-                    )
-                else:
-                    await self._run_deterministic_loop(
-                        browser=browser,
-                        state=state,
-                        profile_store=profile_store,
-                        checkpoint_store=checkpoint_store,
-                        toolbox=toolbox,
-                    )
+                await self._run_deterministic_loop(
+                    browser=browser,
+                    state=state,
+                    profile_store=profile_store,
+                    checkpoint_store=checkpoint_store,
+                    toolbox=toolbox,
+                )
 
         summary = RunSummary(
             start_url=target_url,
@@ -197,95 +133,6 @@ class CrawlRunner:
         )
         return summary
 
-    async def _run_llm_orchestrated_loop(
-        self,
-        *,
-        browser: BrowserRuntime,
-        state: RuntimeState,
-        profile_store: SelectorProfileStore,
-        checkpoint_store: CheckpointStore,
-        toolbox: CopilotToolbox,
-    ) -> None:
-        client_config = SubprocessConfig(
-            cwd=str(self.config.workspace_dir),
-            use_logged_in_user=True,
-        )
-
-        async with CopilotClient(client_config) as client:
-            async with await client.create_session(
-                model=self.config.model,
-                on_permission_request=PermissionHandler.approve_all,
-                on_user_input_request=self._on_user_input_request,
-                tools=toolbox.build_tools(),
-                streaming=False,
-                infinite_sessions={"enabled": True},
-            ) as session:
-                waiter = SessionWaiter(self.console)
-                session.on(waiter.on_event)
-
-                try:
-                    await self._send_and_wait(
-                        session,
-                        waiter,
-                        SYSTEM_PROMPT,
-                        timeout_seconds=INITIAL_WAIT_TIMEOUT_SECONDS,
-                    )
-                except TimeoutError:
-                    state.last_warning = "initial_controller_timeout"
-                    self.console.print(
-                        "[yellow]Initial controller wait timed out; continuing with turn loop.[/yellow]",
-                    )
-
-                stale_turns = 0
-                previous_written = state.records_written
-
-                for turn in range(1, self.config.max_turns + 1):
-                    if state.stop_reason:
-                        break
-                    if state.records_written >= state.max_records:
-                        state.stop_reason = "max_records_reached"
-                        break
-
-                    if state.captcha_detected or state.consecutive_failures >= self.config.max_consecutive_failures:
-                        await self._manual_intervention(browser, state, profile_store)
-                        if state.stop_reason:
-                            break
-
-                    prompt = self._build_turn_prompt(turn, state)
-                    try:
-                        await self._send_and_wait(
-                            session,
-                            waiter,
-                            prompt,
-                            timeout_seconds=TURN_WAIT_TIMEOUT_SECONDS,
-                        )
-                    except TimeoutError:
-                        state.consecutive_failures += 1
-                        state.last_warning = "controller_timeout"
-                        await self._manual_intervention(browser, state, profile_store)
-                        if state.stop_reason:
-                            break
-
-                    if state.records_written == previous_written:
-                        stale_turns += 1
-                    else:
-                        stale_turns = 0
-                        previous_written = state.records_written
-
-                    if stale_turns >= 4:
-                        self.console.print(
-                            "[yellow]No extraction progress after 4 turns. Requesting feedback.[/yellow]",
-                        )
-                        await self._manual_intervention(browser, state, profile_store)
-                        stale_turns = 0
-
-                    await self._save_checkpoint(browser, state, checkpoint_store)
-
-                if not state.stop_reason:
-                    state.stop_reason = "turn_limit_reached"
-
-                await self._save_checkpoint(browser, state, checkpoint_store)
-
     async def _run_deterministic_loop(
         self,
         *,
@@ -293,7 +140,7 @@ class CrawlRunner:
         state: RuntimeState,
         profile_store: SelectorProfileStore,
         checkpoint_store: CheckpointStore,
-        toolbox: CopilotToolbox,
+        toolbox: CrawlToolbox,
     ) -> None:
         stale_turns = 0
         previous_written = state.records_written
@@ -556,7 +403,7 @@ class CrawlRunner:
             "last_page_extraction_diagnostics": state.last_page_extraction_diagnostics,
         }
 
-    async def _attempt_save_candidate(self, toolbox: CopilotToolbox, candidate: ExtractionCandidate) -> None:
+    async def _attempt_save_candidate(self, toolbox: CrawlToolbox, candidate: ExtractionCandidate) -> None:
         options = options_to_map(candidate.option_texts)
         answers = parse_answer_letters(candidate.answer_text)
         state = toolbox.state
@@ -572,165 +419,6 @@ class CrawlRunner:
         )
         if saved:
             return
-
-        if state.stop_reason:
-            return
-
-        if self.config.orchestration_mode != "hybrid_gap_fill":
-            return
-
-        assist_reason = self._assist_trigger_reason(candidate, state)
-        if not assist_reason:
-            return
-
-        page_assist_key = f"assist_attempts::{state.current_page_url or state.current_url}"
-        current_attempts = int(state.notes.get(page_assist_key, 0))
-        if current_attempts >= self.config.max_llm_assists_per_page:
-            return
-
-        state.notes[page_assist_key] = current_attempts + 1
-        state.llm_assist_attempts_total += 1
-        state.current_page_llm_assists += 1
-        state.llm_assist_last_trigger_reason = assist_reason
-
-        assisted = await self._run_gap_fill_assist(toolbox, state)
-        if not assisted:
-            return
-
-        retried = await toolbox.browser.extract_candidate()
-        retry_saved, _, _ = toolbox._save_candidate_record(
-            question=retried.question,
-            options=options_to_map(retried.option_texts),
-            answers=parse_answer_letters(retried.answer_text),
-            extracted_answer_text=retried.answer_text,
-            confidence_value=float(retried.confidence or 0.0),
-            used_selectors=retried.used_selectors,
-        )
-        if retry_saved:
-            state.llm_assist_saved_count += 1
-
-    def _assist_trigger_reason(self, candidate: ExtractionCandidate, state: RuntimeState) -> str:
-        if candidate.confidence < self.config.min_confidence:
-            return "low_confidence"
-
-        candidate_warnings = set(candidate.warnings)
-        if "question_missing" in candidate_warnings or "insufficient_options" in candidate_warnings:
-            return "missing_core_fields"
-
-        if state.last_warning.startswith("ignored_stop_request"):
-            return ""
-
-        return ""
-
-    async def _run_gap_fill_assist(self, toolbox: CopilotToolbox, state: RuntimeState) -> bool:
-        client_config = SubprocessConfig(
-            cwd=str(self.config.workspace_dir),
-            use_logged_in_user=True,
-        )
-
-        try:
-            async with CopilotClient(client_config) as client:
-                async with await client.create_session(
-                    model=self.config.model,
-                    on_permission_request=PermissionHandler.approve_all,
-                    on_user_input_request=self._on_user_input_request,
-                    tools=toolbox.build_gap_fill_tools(),
-                    streaming=False,
-                    infinite_sessions={"enabled": True},
-                ) as session:
-                    waiter = SessionWaiter(self.console)
-                    session.on(waiter.on_event)
-                    await self._send_and_wait(
-                        session,
-                        waiter,
-                        self._build_gap_fill_prompt(state),
-                        timeout_seconds=90,
-                    )
-                    return True
-        except TimeoutError:
-            state.last_warning = "gap_fill_timeout"
-            return False
-        except Exception:
-            state.last_warning = "gap_fill_error"
-            return False
-
-    def _build_gap_fill_prompt(self, state: RuntimeState) -> str:
-        snapshot = {
-            "current_page_url": state.current_page_url,
-            "records_written": state.records_written,
-            "consecutive_failures": state.consecutive_failures,
-            "last_warning": state.last_warning,
-            "selector_overrides": state.selector_overrides,
-        }
-
-        return (
-            "You are in gap-fill mode for the current page only. "
-            "Do not navigate pages and do not attempt to stop the run. "
-            "Try to recover extraction quality by discovering/selecting better selectors, "
-            "then extract and save one valid record if possible. "
-            "Use only the provided tools.\n\n"
-            f"State:\n{json.dumps(snapshot, ensure_ascii=True)}"
-        )
-
-    async def _send_and_wait(
-        self,
-        session: Any,
-        waiter: SessionWaiter,
-        prompt: str,
-        *,
-        timeout_seconds: int,
-    ) -> None:
-        waiter.reset()
-        await session.send(prompt)
-        await asyncio.wait_for(waiter.done.wait(), timeout=timeout_seconds)
-
-    def _build_turn_prompt(self, turn: int, state: RuntimeState) -> str:
-        state_snapshot = {
-            "turn": turn,
-            "records_written": state.records_written,
-            "rejected_records": state.rejected_records,
-            "next_index": state.next_index,
-            "current_page_url": state.current_page_url,
-            "current_page_candidates_found": state.current_page_candidates_found,
-            "current_page_saved": state.current_page_saved,
-            "current_page_skipped": state.current_page_skipped,
-            "last_page_candidates_found": state.last_page_candidates_found,
-            "last_page_saved": state.last_page_saved,
-            "last_page_skipped": state.last_page_skipped,
-            "pages_processed": state.pages_processed,
-            "consecutive_failures": state.consecutive_failures,
-            "validation_failures": state.validation_failures,
-            "seen_fingerprints": len(state.seen_fingerprints),
-            "captcha_detected": state.captcha_detected,
-            "last_warning": state.last_warning,
-            "selector_overrides": state.selector_overrides,
-        }
-
-        return (
-            "Execute exactly one page extraction cycle."
-            " Capture page context, detect captcha if needed, reveal answers,"
-            " extract current candidate and save records for the full visible page."
-            " Skip ambiguous items and continue. After page extraction, navigate next and wait for change."
-            " If blocked for the full page, request selector overrides."
-            " Call stop_run only for terminal conditions."
-            " For end-of-pagination, call has_next_page first and only stop when has_next_page=false.\n\n"
-            f"State:\n{json.dumps(state_snapshot, ensure_ascii=True)}"
-        )
-
-    async def _on_user_input_request(self, request: dict, invocation: dict) -> dict:
-        question = request.get("question", "Provide input:")
-        choices = request.get("choices") or []
-
-        self.console.print(f"[magenta]copilot asks[/magenta] {question}")
-        if choices:
-            for idx, choice in enumerate(choices, start=1):
-                self.console.print(f"  {idx}. {choice}")
-
-        answer = await _async_input("> ")
-        return {
-            "answer": answer,
-            "wasFreeform": True,
-        }
 
     async def _prompt_for_login_at_start(self, browser: BrowserRuntime, state: RuntimeState) -> bool:
         self.console.print("[yellow]Manual login prompt enabled.[/yellow]")

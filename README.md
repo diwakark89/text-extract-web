@@ -3,7 +3,7 @@
 This repository has two parts:
 
 - `chrome_extension/`: Manifest V3 browser extension for selector-based MCQ extraction from the active tab.
-- `automation/`: Python + Playwright + Copilot SDK crawler for automated extraction, validation, and checkpoint-resume runs.
+- `automation/`: Python + Playwright crawler for automated extraction, validation, and checkpoint-resume runs.
 
 ## Chrome Extension Setup
 

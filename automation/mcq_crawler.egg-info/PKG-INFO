@@ -1,10 +1,9 @@
 Metadata-Version: 2.4
 Name: mcq-crawler
 Version: 0.1.0
-Summary: Copilot SDK + Playwright MCQ crawler
+Summary: Playwright MCQ crawler
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
-Requires-Dist: github-copilot-sdk>=0.3.0
 Requires-Dist: playwright>=1.54.0
 Requires-Dist: pydantic>=2.9.0
 Requires-Dist: streamlit>=1.35.0
@@ -13,15 +12,15 @@ Requires-Dist: rich>=13.7.0
 Requires-Dist: tenacity>=9.0.0
 Requires-Dist: PyYAML>=6.0.2
 
-# MCQ Crawler (Copilot SDK + Playwright)
+# MCQ Crawler (Playwright)
 
 This folder contains a fresh implementation for automated MCQ extraction.
 
 ## Goals
 
 - Multi-site extraction with adaptive selectors.
-- Copilot SDK as active page controller.
-- Local-only execution using already logged-in Copilot CLI.
+- Deterministic browser-driven extraction with adaptive selectors.
+- Local-only execution with Playwright automation.
 - JSONL output with validation and checkpoint-friendly run state.
 - Human feedback loop for captcha/extraction failures.
 - Checkpoint-resume so interrupted runs can continue.
@@ -83,7 +82,6 @@ Useful options:
 - `--output` path to JSONL output.
 - `--headless/--no-headless` browser mode.
 - `--max-records` extraction cap.
-- `--model` Copilot model, default `gpt-5`.
 - `--resume` resume from checkpoint file.
 - `--checkpoint` set checkpoint file path.
 - `--min-quality-score` enforce stronger persistence quality gate.
@@ -97,8 +95,6 @@ Ready profile for free-braindumps AWS CCP page:
 
 ## Notes
 
-- No token or Copilot CLI path is required by default.
-- The SDK uses local Copilot CLI login (`use_logged_in_user=True`).
 - On captcha/low confidence, the runner prompts for user guidance and resumes.
 - Domain profiles are saved under `automation/profiles/domains/`.
 - Checkpoint state is saved to `automation/output/checkpoint.json` by default.
