@@ -31,6 +31,12 @@ class CrawlRunner:
         self.config = config
         self.console = Console()
 
+    @staticmethod
+    def _compute_missed_questions(expected_count: int | None, records_written: int) -> int | None:
+        if expected_count is None:
+            return None
+        return max(expected_count - records_written, 0)
+
     async def run(self) -> RunSummary:
         base_selector_profile = load_selector_profile(self.config.profile_path)
         profile_store = SelectorProfileStore(self.config.domain_profiles_dir)
@@ -125,6 +131,11 @@ class CrawlRunner:
         summary = RunSummary(
             start_url=target_url,
             records_written=state.records_written,
+            expected_count=self.config.expected_count,
+            missed_questions=self._compute_missed_questions(
+                self.config.expected_count,
+                state.records_written,
+            ),
             rejected_records=state.rejected_records,
             duplicate_records=state.duplicate_records,
             captcha_events=state.captcha_events,

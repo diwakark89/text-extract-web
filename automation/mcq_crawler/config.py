@@ -62,6 +62,7 @@ class RunConfig(BaseModel):
     screenshot_dir: Path = Path("output/screenshots")
     workspace_dir: Path = Path(".")
     max_records: int = 1000
+    expected_count: int | None = Field(default=None, ge=1)
     max_turns: int = 800
     max_page_candidates: int = 80
     start_index: int = 1

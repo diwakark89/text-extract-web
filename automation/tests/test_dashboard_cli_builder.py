@@ -50,6 +50,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             stop_on_missing_answers=True,
             auto_learn_profiles=True,
             max_records=150,
+            expected_count=175,
             questions_per_file=250,
             max_turns=500,
             start_index=3,
@@ -82,6 +83,8 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("--output", command)
         self.assertIn("--questions-per-file", command)
         self.assertIn("250", command)
+        self.assertIn("--expected-count", command)
+        self.assertIn("175", command)
 
         output_value = command[command.index("--output") + 1]
         self.assertEqual(output_value, str(resolve_records_output_path(PROJECT_ROOT, "records.jsonl")))
@@ -103,6 +106,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             auto_learn_profiles=False,
             records_output_name="records.jsonl",
             questions_per_file=300,
+            expected_count=None,
         )
 
         command = build_crawler_command(PROJECT_ROOT, options)
@@ -123,6 +127,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("--no-auto-learn-profiles", command)
         self.assertIn("--questions-per-file", command)
         self.assertIn("300", command)
+        self.assertNotIn("--expected-count", command)
 
     def test_records_json_name_maps_to_jsonl_output_path(self) -> None:
         resolved = resolve_records_output_path(PROJECT_ROOT, "records.json")

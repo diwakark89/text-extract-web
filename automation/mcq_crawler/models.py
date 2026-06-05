@@ -54,6 +54,8 @@ class MCQRecord(BaseModel):
 class RunSummary(BaseModel):
     start_url: str
     records_written: int
+    expected_count: int | None = None
+    missed_questions: int | None = None
     rejected_records: int
     duplicate_records: int
     captcha_events: int

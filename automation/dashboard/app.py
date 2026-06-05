@@ -53,6 +53,7 @@ DASHBOARD_PERSISTED_SETTING_KEYS = (
     "control_clean_output_before_run",
     "records_output_name",
     "control_max_records",
+    "control_expected_count",
     "control_questions_per_file",
     "control_max_turns",
     "control_start_index",
@@ -174,6 +175,8 @@ def main() -> None:
         st.session_state.profile_host_key = url_host_key(st.session_state.start_url)
     if "start_run_requested" not in st.session_state:
         st.session_state.start_run_requested = 0
+    if "dashboard_completion_log_signature" not in st.session_state:
+        st.session_state.dashboard_completion_log_signature = ""
     if "control_resume" not in st.session_state:
         st.session_state.control_resume = _as_bool(persisted_settings.get("control_resume"))
         if st.session_state.control_resume is None:
@@ -253,6 +256,13 @@ def main() -> None:
             _clamp_int(saved_max_records, minimum=1, maximum=5000)
             if saved_max_records is not None
             else 1000
+        )
+    if "control_expected_count" not in st.session_state:
+        saved_expected_count = _as_int(persisted_settings.get("control_expected_count"))
+        st.session_state.control_expected_count = (
+            str(_clamp_int(saved_expected_count, minimum=1, maximum=1000000))
+            if saved_expected_count is not None
+            else ""
         )
     if "control_questions_per_file" not in st.session_state:
         saved_questions_per_file = _as_int(
@@ -364,6 +374,17 @@ def main() -> None:
         max_value=5000,
         key="control_max_records",
     )
+    expected_count_raw = st.sidebar.text_input(
+        "Expected question count",
+        key="control_expected_count",
+        help="Optional. Used for completion reporting to calculate missed questions.",
+    )
+    expected_count_value = _as_int(expected_count_raw)
+    normalized_expected_count = (
+        _clamp_int(expected_count_value, minimum=1, maximum=1000000)
+        if expected_count_value is not None
+        else None
+    )
     questions_per_file = st.sidebar.number_input(
         "Questions per file",
         min_value=1,
@@ -451,6 +472,11 @@ def main() -> None:
         "control_clean_output_before_run": bool(clean_output_before_run),
         "records_output_name": normalized_records_output_name,
         "control_max_records": int(max_records),
+        "control_expected_count": (
+            int(normalized_expected_count)
+            if normalized_expected_count is not None
+            else ""
+        ),
         "control_questions_per_file": int(questions_per_file),
         "control_max_turns": int(max_turns),
         "control_start_index": int(start_index),
@@ -528,6 +554,13 @@ def main() -> None:
         # Number/select widgets can lag a click in rapid UI interactions.
         # Launch only after settle reruns and read committed session values.
         committed_max_turns = int(st.session_state.get("control_max_turns", max_turns))
+        committed_expected_count = _as_int(st.session_state.get("control_expected_count"))
+        if committed_expected_count is not None:
+            committed_expected_count = _clamp_int(
+                committed_expected_count,
+                minimum=1,
+                maximum=1000000,
+            )
         if not start_url.strip():
             st.error("Start URL is required.")
         else:
@@ -545,6 +578,7 @@ def main() -> None:
                 resume=resume,
                 headless=headless,
                 max_records=int(max_records),
+                expected_count=committed_expected_count,
                 questions_per_file=int(questions_per_file),
                 max_turns=committed_max_turns,
                 start_index=int(start_index),
@@ -587,6 +621,7 @@ def main() -> None:
                         else "default profile logic"
                     ),
                     "max_records": options.max_records,
+                    "expected_count": options.expected_count,
                     "questions_per_file": options.questions_per_file,
                     "stop_on_missing_answers": options.stop_on_missing_answers,
                     "records_output_path": str(
@@ -600,6 +635,7 @@ def main() -> None:
                     "command": shlex.join(command),
                     "stopped_at": "",
                 }
+                st.session_state.dashboard_completion_log_signature = ""
                 manager.add_local_log(f"Selected URL: {options.start_url}")
                 manager.add_local_log(
                     "Selected profile: "
@@ -632,12 +668,44 @@ def main() -> None:
         if status in {"completed", "failed"} and not summary.get("stopped_at"):
             summary["stopped_at"] = datetime.now(timezone.utc).isoformat()
 
+        expected_questions = _as_int(summary.get("expected_count"))
+        missed_questions = (
+            max(expected_questions - (total_extracted_questions or 0), 0)
+            if expected_questions is not None
+            else None
+        )
+
+        if status in {"completed", "failed"}:
+            completion_signature = (
+                f"{status}:{summary.get('started_at', '')}:{summary.get('stopped_at', '')}"
+                f":{total_extracted_questions or 0}:{expected_questions}:{missed_questions}"
+            )
+            if st.session_state.get("dashboard_completion_log_signature") != completion_signature:
+                manager.add_local_log(
+                    "Run metrics: "
+                    f"extracted={total_extracted_questions or 0}, "
+                    + (
+                        f"expected={expected_questions}, missed={missed_questions}"
+                        if expected_questions is not None
+                        else "expected=not_set, missed=not_set"
+                    ),
+                )
+                st.session_state.dashboard_completion_log_signature = completion_signature
+
         st.subheader("Current run summary")
         c1, c2, c3 = st.columns(3)
         c1.metric("Status", status)
         c2.metric("Started", summary.get("started_at", ""))
         c3.metric("Stopped", summary.get("stopped_at", "-") or "-")
         st.metric("Total extracted questions", str(total_extracted_questions or 0))
+        st.metric(
+            "Expected questions",
+            str(expected_questions) if expected_questions is not None else "-",
+        )
+        st.metric(
+            "Missed questions",
+            str(missed_questions) if missed_questions is not None else "-",
+        )
         st.write(f"URL: {summary.get('url', '')}")
         st.write(f"Profile: {summary.get('profile', '')}")
         st.caption("Command")

@@ -38,6 +38,7 @@ class DashboardFileViewTests(unittest.TestCase):
                 {
                     "control_headless": True,
                     "control_max_records": 1200,
+                    "control_expected_count": 1250,
                     "ignored": ["not-serializable-for-settings"],
                 },
             )
@@ -46,6 +47,7 @@ class DashboardFileViewTests(unittest.TestCase):
 
             self.assertEqual(settings.get("control_headless"), True)
             self.assertEqual(settings.get("control_max_records"), 1200)
+            self.assertEqual(settings.get("control_expected_count"), 1250)
             self.assertNotIn("ignored", settings)
 
     def test_dashboard_settings_survive_recent_url_and_profile_updates(self) -> None:
@@ -54,6 +56,7 @@ class DashboardFileViewTests(unittest.TestCase):
             saved_settings = {
                 "control_headless": True,
                 "records_output_name": "records_custom.jsonl",
+                "control_expected_count": 888,
             }
             save_dashboard_settings(output_dir, saved_settings)
 

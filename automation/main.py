@@ -23,6 +23,12 @@ def run(
     checkpoint: Path = typer.Option(Path("output/checkpoint.json"), help="Checkpoint file path"),
     screenshots: Path = typer.Option(Path("output/screenshots"), help="Screenshot directory"),
     max_records: int = typer.Option(1000, help="Maximum records to save"),
+    expected_count: int | None = typer.Option(
+        None,
+        "--expected-count",
+        min=1,
+        help="Expected total questions for run-completion missed-question reporting",
+    ),
     questions_per_file: int = typer.Option(
         300,
         "--questions-per-file",
@@ -82,6 +88,7 @@ def run(
         checkpoint_path=checkpoint,
         screenshot_dir=screenshots,
         max_records=max_records,
+        expected_count=expected_count,
         questions_per_file=questions_per_file,
         max_turns=max_turns,
         max_page_candidates=max_page_candidates,

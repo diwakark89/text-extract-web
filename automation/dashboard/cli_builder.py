@@ -14,6 +14,7 @@ class DashboardRunOptions:
     resume: bool = False
     headless: bool = False
     max_records: int = 1000
+    expected_count: int | None = None
     questions_per_file: int = 300
     max_turns: int = 800
     start_index: int = 1
@@ -152,6 +153,9 @@ def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) ->
         "--auto-learn-profiles" if options.auto_learn_profiles else "--no-auto-learn-profiles",
         "--selector-debug" if options.selector_debug else "--no-selector-debug",
     ]
+
+    if options.expected_count is not None:
+        command.extend(["--expected-count", str(options.expected_count)])
 
     if options.profile_path:
         command.extend(["--profile", options.profile_path])

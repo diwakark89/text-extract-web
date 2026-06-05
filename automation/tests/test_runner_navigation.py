@@ -216,6 +216,18 @@ class _StubAutoLoginBrowser:
 
 
 class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
+    def test_compute_missed_questions_when_expected_is_unset(self) -> None:
+        self.assertIsNone(CrawlRunner._compute_missed_questions(None, 10))
+
+    def test_compute_missed_questions_when_expected_is_above_extracted(self) -> None:
+        self.assertEqual(CrawlRunner._compute_missed_questions(15, 10), 5)
+
+    def test_compute_missed_questions_when_expected_equals_extracted(self) -> None:
+        self.assertEqual(CrawlRunner._compute_missed_questions(10, 10), 0)
+
+    def test_compute_missed_questions_when_extracted_exceeds_expected(self) -> None:
+        self.assertEqual(CrawlRunner._compute_missed_questions(10, 13), 0)
+
     def test_is_auth_route_detects_callback_and_login_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
