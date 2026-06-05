@@ -15,6 +15,19 @@ PROFILE_KEYS = [
     "next_buttons",
 ]
 
+BROAD_LEARNED_SELECTORS = {
+    "strong",
+    "[class*='question']",
+    '[class*="question"]',
+    "[class*='option']",
+    '[class*="option"]',
+}
+
+
+def _can_learn_selector(selector: str) -> bool:
+    normalized = " ".join((selector or "").strip().lower().split())
+    return bool(normalized) and normalized not in BROAD_LEARNED_SELECTORS
+
 
 class SelectorProfileStore:
     def __init__(self, domain_profiles_dir: Path) -> None:
@@ -56,6 +69,8 @@ class SelectorProfileStore:
 
         stripped = (selector or "").strip()
         if not stripped:
+            return
+        if not _can_learn_selector(stripped):
             return
 
         profile_map = self._load_profile_map(domain)

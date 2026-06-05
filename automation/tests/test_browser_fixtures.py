@@ -3,15 +3,17 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 import sys
+import tempfile
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from mcq_crawler.browser import BrowserRuntime, parse_answer_letters
+from mcq_crawler.browser import BrowserRuntime, options_to_map, parse_answer_letters
 from mcq_crawler.config import RunConfig
 from mcq_crawler.models import RuntimeState
 from mcq_crawler.config import DEFAULT_SELECTOR_PROFILE
+from mcq_crawler.profile_store import SelectorProfileStore
 
 
 class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
@@ -174,6 +176,55 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
             ".question-content .mc-question > ul > li.mc-option",
         )
 
+    async def test_extract_page_candidates_handles_examcademy_current_markup(self) -> None:
+        fixture = (
+            PROJECT_ROOT / "tests" / "fixtures" / "examcademy_current_markup.html"
+        ).resolve().as_uri()
+        await self.runtime.open_url(fixture)
+
+        self.runtime.state.selector_overrides["question_containers"] = ["div.exam-row"]
+        self.runtime.state.selector_overrides["question"] = [
+            "[class*='question']",
+            ".question-content > p",
+        ]
+        self.runtime.state.selector_overrides["options"] = [
+            "[class*='option']",
+            ".question-content .mc-question > ul > li.mc-option",
+        ]
+        self.runtime.state.selector_overrides["answer"] = [
+            "strong",
+            ".question-content .mc-question > ul > li.mc-option.mc-option-missed",
+        ]
+
+        candidates = await self.runtime.extract_page_candidates(max_candidates=10)
+
+        self.assertEqual(len(candidates), 3)
+        expected_option_counts = [5, 6, 5]
+        for candidate, expected_count in zip(candidates, expected_option_counts):
+            joined_options = " ".join(candidate.option_texts)
+            self.assertEqual(len(candidate.option_texts), expected_count)
+            self.assertNotIn("Report a problem", joined_options)
+            self.assertNotIn("Save question", joined_options)
+            self.assertNotIn("Ask AstroTutor", joined_options)
+            for option in candidate.option_texts:
+                self.assertNotIn("\n", option)
+
+        first = candidates[0]
+        first_options = options_to_map(first.option_texts)
+        self.assertIn("hybrid IT setup", first.question)
+        self.assertIn("Which combination of steps", first.question)
+        self.assertIn("\n\nWhich combination of steps", first.question)
+        self.assertNotIn("Save question", first.question)
+        self.assertEqual(
+            first_options["A"],
+            "Create a new Site-to-Site VPN tunnel for the IPv6 traffic.",
+        )
+        self.assertEqual(first_options["D"], "Add a new IPv6 peer in the existing VIF.")
+        self.assertEqual(parse_answer_letters(first.answer_text), ["A", "D"])
+
+        self.assertEqual(parse_answer_letters(candidates[1].answer_text), ["A", "B", "E"])
+        self.assertEqual(parse_answer_letters(candidates[2].answer_text), ["B", "E"])
+
     async def test_extract_page_candidates_tracks_image_based_skip_counts(self) -> None:
         fixture = (
             PROJECT_ROOT / "tests" / "fixtures" / "image_only_question_with_valid_sibling.html"
@@ -290,6 +341,23 @@ class BrowserFixtureTests(unittest.IsolatedAsyncioTestCase):
         top_skipped = snapshot.get("top_skipped", [])
         self.assertTrue(top_skipped)
         self.assertEqual(top_skipped[0].get("reason"), "out_of_scope")
+
+
+class SelectorProfileStoreTests(unittest.TestCase):
+    def test_record_selector_success_ignores_broad_selectors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = SelectorProfileStore(Path(temp_dir))
+
+            store.record_selector_success("examcademy.com", "question", "[class*='question']")
+            store.record_selector_success("examcademy.com", "options", "[class*='option']")
+            store.record_selector_success("examcademy.com", "answer", "strong")
+            store.record_selector_success("examcademy.com", "question", ".question-content > p")
+
+            profile = store._load_profile_map("examcademy.com")
+
+            self.assertEqual(profile.get("question"), [".question-content > p"])
+            self.assertNotIn("options", profile)
+            self.assertNotIn("answer", profile)
 
 
 if __name__ == "__main__":

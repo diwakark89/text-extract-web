@@ -1,23 +1,21 @@
 question:
-- '[class*=''question'']'
 - .question-content > p
+- .exam-content .question-content > p
+- .question-content p
 options:
-- '[class*=''option'']'
 - .question-content .mc-question > ul > li.mc-option
 - .mc-question > ul > li.mc-option
 answer:
-- strong
+- .question-content .mc-question > ul > li.mc-option.mc-option-missed
 - .question-content .mc-question li.mc-option.mc-option-missed
 - .question-content .mc-question li.mc-option[class*='correct']
 - .question-content .mc-question .correct-answer
 _meta:
   selector_success_counts:
     question:
-      .question-content > p: 9384
-      '[class*=''question'']': 4619
+      .question-content > p: 9708
     options:
-      .question-content .mc-question > ul > li.mc-option: 9384
-      '[class*=''option'']': 4619
+      .question-content .mc-question > ul > li.mc-option: 9708
     answer:
       .question-content .mc-question li.mc-option.mc-option-missed: 9384
-      strong: 4619
+      .question-content .mc-question > ul > li.mc-option.mc-option-missed: 324

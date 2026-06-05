@@ -25,6 +25,15 @@ def _clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
 
 
+def _clean_question_text(value: str) -> str:
+    normalized = (value or "").replace("\r\n", "\n").replace("\r", "\n")
+    paragraphs = [
+        re.sub(r"[^\S\n]+", " ", paragraph).strip()
+        for paragraph in re.split(r"\n{2,}", normalized)
+    ]
+    return "\n\n".join(paragraph for paragraph in paragraphs if paragraph)
+
+
 def options_to_map(option_texts: list[str]) -> dict[str, str]:
     labels = [chr(code) for code in range(ord("A"), ord("Z") + 1)]
     mapped: dict[str, str] = {}
@@ -213,7 +222,64 @@ async def _extract_page_candidates_impl(
                 return out;
               };
 
-              const firstText = (selectors) => {
+              const isNoiseText = (text) => {
+                const value = clean(text).toLowerCase();
+                return (
+                  !value ||
+                  /^question\\s+\\d+$/.test(value) ||
+                  /^(report a problem|save question|ask astrotutor|show answer|hide answer)$/.test(value) ||
+                  /^\\(?\\d+\\)?\\s*show comments/.test(value) ||
+                  /^show comments/.test(value) ||
+                  /^\\d+$/.test(value)
+                );
+              };
+
+              const isActionNode = (node) => {
+                if (!node || !node.matches) return false;
+                try {
+                  return (
+                    node.matches("button, a, svg, .exam-options, [class*='report'], [class*='fav-question'], [class*='question-actions'], [class*='comment'], [class*='vote']") ||
+                    Boolean(node.closest(".exam-options, [class*='comment'], [class*='vote']"))
+                  );
+                } catch {
+                  return false;
+                }
+              };
+
+              const isQuestionNoiseNode = (node) => {
+                if (!node || !node.matches) return true;
+                try {
+                  return (
+                    isActionNode(node) ||
+                    node.matches("li, ul, ol, .mc-question, [class*='option']") ||
+                    Boolean(node.closest("li, ul, ol, .mc-question"))
+                  );
+                } catch {
+                  return true;
+                }
+              };
+
+              const questionTextNodes = (node) => {
+                if (!node || !node.matches || isQuestionNoiseNode(node)) {
+                  return [];
+                }
+                try {
+                  if (node.matches("p, h1, h2, h3, h4, h5, h6")) {
+                    return [node];
+                  }
+                  const directTextNodes = Array.from(
+                    node.querySelectorAll(":scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6"),
+                  ).filter((candidate) => !isQuestionNoiseNode(candidate));
+                  if (directTextNodes.length > 0) {
+                    return directTextNodes;
+                  }
+                } catch {
+                  // Fall back to the matched node text below.
+                }
+                return [node];
+              };
+
+              const collectQuestion = (selectors) => {
                                 let mediaOnly = false;
                 for (const selector of selectors || []) {
                   let nodes = [];
@@ -223,14 +289,30 @@ async def _extract_page_candidates_impl(
                     continue;
                   }
 
+                  const parts = [];
+                  let selectorHasMedia = false;
                   for (const node of nodes) {
-                    const text = clean(node.innerText);
-                    if (text) {
-                                            return { text, selector, hasMedia: hasMedia(node), mediaOnly: false };
-                                        }
-                                        if (hasMedia(node)) {
-                                            mediaOnly = true;
+                    if (hasMedia(node)) {
+                      selectorHasMedia = true;
                     }
+                    for (const textNode of questionTextNodes(node)) {
+                      const text = clean(textNode.innerText);
+                      if (text && !isNoiseText(text) && !parts.includes(text)) {
+                        parts.push(text);
+                      }
+                    }
+                  }
+
+                  if (parts.length > 0) {
+                    return {
+                      text: parts.join("\\n\\n"),
+                      selector,
+                      hasMedia: selectorHasMedia,
+                      mediaOnly: false,
+                    };
+                  }
+                  if (selectorHasMedia) {
+                    mediaOnly = true;
                   }
                 }
                                 return { text: "", selector: "", hasMedia: false, mediaOnly };
@@ -247,46 +329,39 @@ async def _extract_page_candidates_impl(
                     continue;
                   }
 
-                  const options = [];
+                  const optionNodes = [];
                   for (const node of nodes) {
-                    if (node.matches("li")) {
-                      const text = clean(node.innerText);
-                                            if (text) {
-                                                options.push(text);
-                                                if (hasMedia(node)) {
-                                                    itemsWithMediaCount += 1;
-                                                }
-                                            } else if (hasMedia(node)) {
-                                                mediaOnlyCount += 1;
-                                            }
+                    if (!node || !node.matches || isActionNode(node)) {
                       continue;
                     }
 
-                    const listItems = Array.from(node.querySelectorAll(":scope > li"));
+                    if (node.matches("li, [role='option'], .mc-option, .option, .ui-selectee")) {
+                      optionNodes.push(node);
+                      continue;
+                    }
+
+                    const listItems = Array.from(node.querySelectorAll(":scope > li, :scope > ul > li, :scope > ol > li"));
                     if (listItems.length > 0) {
                       for (const li of listItems) {
-                        const text = clean(li.innerText);
-                                                if (text) {
-                                                    options.push(text);
-                                                    if (hasMedia(li)) {
-                                                        itemsWithMediaCount += 1;
-                                                    }
-                                                } else if (hasMedia(li)) {
-                                                    mediaOnlyCount += 1;
-                                                }
+                        if (!isActionNode(li)) {
+                          optionNodes.push(li);
+                        }
                       }
                       continue;
                     }
+                  }
 
+                  const options = [];
+                  for (const node of optionNodes) {
                     const text = clean(node.innerText);
-                                        if (text) {
-                                            options.push(text);
-                                            if (hasMedia(node)) {
-                                                itemsWithMediaCount += 1;
-                                            }
-                                        } else if (hasMedia(node)) {
-                                            mediaOnlyCount += 1;
-                                        }
+                    if (text && !isNoiseText(text)) {
+                      options.push(text);
+                      if (hasMedia(node)) {
+                        itemsWithMediaCount += 1;
+                      }
+                    } else if (hasMedia(node)) {
+                      mediaOnlyCount += 1;
+                    }
                   }
 
                   const deduped = uniq(options);
@@ -308,9 +383,80 @@ async def _extract_page_candidates_impl(
                                 };
               };
 
-              const question = firstText(questionSelectors);
+              const optionLetter = (node) => {
+                if (!node || !node.matches) return "";
+                const li = node.matches("li") ? node : node.closest("li");
+                if (li) {
+                  const strong = li.querySelector("strong");
+                  const labelText = clean(strong ? strong.innerText : "") || clean(li.innerText);
+                  const labelMatch = labelText.match(/^([A-J])(?:[\\).:\\s-]|$)/i);
+                  if (labelMatch) {
+                    return labelMatch[1].toUpperCase();
+                  }
+
+                  const scope = li.closest(".mc-question") || el;
+                  const siblings = Array.from(scope.querySelectorAll("li.mc-option, li"));
+                  const index = siblings.indexOf(li);
+                  if (index >= 0 && index < 10) {
+                    return String.fromCharCode(65 + index);
+                  }
+                }
+
+                const textMatch = clean(node.innerText).match(/^([A-J])(?:[\\).:\\s-]|$)/i);
+                return textMatch ? textMatch[1].toUpperCase() : "";
+              };
+
+              const collectAnswer = (selectors) => {
+                for (const selector of selectors || []) {
+                  let nodes = [];
+                  try {
+                    nodes = Array.from(el.querySelectorAll(selector));
+                  } catch {
+                    continue;
+                  }
+
+                  const letters = [];
+                  const texts = [];
+                  for (const node of nodes) {
+                    if (!node || !node.matches || isActionNode(node)) {
+                      continue;
+                    }
+
+                    const li = node.matches("li") ? node : node.closest("li.mc-option, li");
+                    const marker = [
+                      selector,
+                      String(node.className || ""),
+                      li ? String(li.className || "") : "",
+                    ].join(" ").toLowerCase();
+                    if (li && node.closest(".mc-question")) {
+                      if (/(missed|correct|answer|selected)/.test(marker)) {
+                        const letter = optionLetter(li);
+                        if (letter && !letters.includes(letter)) {
+                          letters.push(letter);
+                        }
+                      }
+                      continue;
+                    }
+
+                    const text = clean(node.innerText);
+                    if (text && !isNoiseText(text) && !texts.includes(text)) {
+                      texts.push(text);
+                    }
+                  }
+
+                  if (letters.length > 0) {
+                    return { text: letters.join(","), selector };
+                  }
+                  if (texts.length > 0) {
+                    return { text: texts.join(", "), selector };
+                  }
+                }
+                return { text: "", selector: "" };
+              };
+
+              const question = collectQuestion(questionSelectors);
               const options = collectOptions(optionSelectors);
-              const answer = firstText(answerSelectors);
+              const answer = collectAnswer(answerSelectors);
 
               return {
                 question: question.text,
@@ -420,7 +566,7 @@ async def _extract_page_candidates_impl(
                     last_skip_reason = "extract_exception"
 
                 if isinstance(candidate_payload, dict):
-                    question_value = _clean_text(str(candidate_payload.get("question", "")))
+                    question_value = _clean_question_text(str(candidate_payload.get("question", "")))
                     option_values = candidate_payload.get("option_texts")
                     question_media_only = bool(candidate_payload.get("question_media_only"))
                     question_has_media = bool(candidate_payload.get("question_has_media"))
@@ -493,7 +639,64 @@ async def _extract_page_candidates_impl(
                     return out;
                 };
 
-                const firstText = (root, selectors) => {
+                const isNoiseText = (text) => {
+                    const value = clean(text).toLowerCase();
+                    return (
+                        !value ||
+                        /^question\\s+\\d+$/.test(value) ||
+                        /^(report a problem|save question|ask astrotutor|show answer|hide answer)$/.test(value) ||
+                        /^\\(?\\d+\\)?\\s*show comments/.test(value) ||
+                        /^show comments/.test(value) ||
+                        /^\\d+$/.test(value)
+                    );
+                };
+
+                const isActionNode = (node) => {
+                    if (!node || !node.matches) return false;
+                    try {
+                        return (
+                            node.matches("button, a, svg, .exam-options, [class*='report'], [class*='fav-question'], [class*='question-actions'], [class*='comment'], [class*='vote']") ||
+                            Boolean(node.closest(".exam-options, [class*='comment'], [class*='vote']"))
+                        );
+                    } catch {
+                        return false;
+                    }
+                };
+
+                const isQuestionNoiseNode = (node) => {
+                    if (!node || !node.matches) return true;
+                    try {
+                        return (
+                            isActionNode(node) ||
+                            node.matches("li, ul, ol, .mc-question, [class*='option']") ||
+                            Boolean(node.closest("li, ul, ol, .mc-question"))
+                        );
+                    } catch {
+                        return true;
+                    }
+                };
+
+                const questionTextNodes = (node) => {
+                    if (!node || !node.matches || isQuestionNoiseNode(node)) {
+                        return [];
+                    }
+                    try {
+                        if (node.matches("p, h1, h2, h3, h4, h5, h6")) {
+                            return [node];
+                        }
+                        const directTextNodes = Array.from(
+                            node.querySelectorAll(":scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6"),
+                        ).filter((candidate) => !isQuestionNoiseNode(candidate));
+                        if (directTextNodes.length > 0) {
+                            return directTextNodes;
+                        }
+                    } catch {
+                        // Fall back to the matched node text below.
+                    }
+                    return [node];
+                };
+
+                const collectQuestion = (root, selectors) => {
                     for (const selector of selectors) {
                         let nodes = [];
                         try {
@@ -501,11 +704,19 @@ async def _extract_page_candidates_impl(
                         } catch {
                             continue;
                         }
+
+                        const parts = [];
                         for (const node of nodes) {
-                            const text = clean(node.innerText);
-                            if (text) {
-                                return { text, selector };
+                            for (const textNode of questionTextNodes(node)) {
+                                const text = clean(textNode.innerText);
+                                if (text && !isNoiseText(text) && !parts.includes(text)) {
+                                    parts.push(text);
+                                }
                             }
+                        }
+
+                        if (parts.length > 0) {
+                            return { text: parts.join("\\n\\n"), selector };
                         }
                     }
                     return { text: "", selector: "" };
@@ -520,25 +731,31 @@ async def _extract_page_candidates_impl(
                             continue;
                         }
 
-                        const options = [];
+                        const optionNodes = [];
                         for (const node of nodes) {
-                            if (node.matches("li")) {
-                                const text = clean(node.innerText);
-                                if (text) options.push(text);
+                            if (!node || !node.matches || isActionNode(node)) {
+                                continue;
+                            }
+                            if (node.matches("li, [role='option'], .mc-option, .option, .ui-selectee")) {
+                                optionNodes.push(node);
                                 continue;
                             }
 
-                            const listItems = Array.from(node.querySelectorAll(":scope > li"));
+                            const listItems = Array.from(node.querySelectorAll(":scope > li, :scope > ul > li, :scope > ol > li"));
                             if (listItems.length > 0) {
                                 for (const li of listItems) {
-                                    const text = clean(li.innerText);
-                                    if (text) options.push(text);
+                                    if (!isActionNode(li)) {
+                                        optionNodes.push(li);
+                                    }
                                 }
                                 continue;
                             }
+                        }
 
+                        const options = [];
+                        for (const node of optionNodes) {
                             const text = clean(node.innerText);
-                            if (text) options.push(text);
+                            if (text && !isNoiseText(text)) options.push(text);
                         }
 
                         const deduped = uniq(options);
@@ -547,6 +764,77 @@ async def _extract_page_candidates_impl(
                         }
                     }
                     return { items: [], selector: "" };
+                };
+
+                const optionLetter = (root, node) => {
+                    if (!node || !node.matches) return "";
+                    const li = node.matches("li") ? node : node.closest("li");
+                    if (li) {
+                        const strong = li.querySelector("strong");
+                        const labelText = clean(strong ? strong.innerText : "") || clean(li.innerText);
+                        const labelMatch = labelText.match(/^([A-J])(?:[\\).:\\s-]|$)/i);
+                        if (labelMatch) {
+                            return labelMatch[1].toUpperCase();
+                        }
+
+                        const scope = li.closest(".mc-question") || root;
+                        const siblings = Array.from(scope.querySelectorAll("li.mc-option, li"));
+                        const index = siblings.indexOf(li);
+                        if (index >= 0 && index < 10) {
+                            return String.fromCharCode(65 + index);
+                        }
+                    }
+
+                    const textMatch = clean(node.innerText).match(/^([A-J])(?:[\\).:\\s-]|$)/i);
+                    return textMatch ? textMatch[1].toUpperCase() : "";
+                };
+
+                const collectAnswer = (root, selectors) => {
+                    for (const selector of selectors) {
+                        let nodes = [];
+                        try {
+                            nodes = Array.from(root.querySelectorAll(selector));
+                        } catch {
+                            continue;
+                        }
+
+                        const letters = [];
+                        const texts = [];
+                        for (const node of nodes) {
+                            if (!node || !node.matches || isActionNode(node)) {
+                                continue;
+                            }
+
+                            const li = node.matches("li") ? node : node.closest("li.mc-option, li");
+                            const marker = [
+                                selector,
+                                String(node.className || ""),
+                                li ? String(li.className || "") : "",
+                            ].join(" ").toLowerCase();
+                            if (li && node.closest(".mc-question")) {
+                                if (/(missed|correct|answer|selected)/.test(marker)) {
+                                    const letter = optionLetter(root, li);
+                                    if (letter && !letters.includes(letter)) {
+                                        letters.push(letter);
+                                    }
+                                }
+                                continue;
+                            }
+
+                            const text = clean(node.innerText);
+                            if (text && !isNoiseText(text) && !texts.includes(text)) {
+                                texts.push(text);
+                            }
+                        }
+
+                        if (letters.length > 0) {
+                            return { text: letters.join(","), selector };
+                        }
+                        if (texts.length > 0) {
+                            return { text: texts.join(", "), selector };
+                        }
+                    }
+                    return { text: "", selector: "" };
                 };
 
                 const roots = [];
@@ -581,9 +869,9 @@ async def _extract_page_candidates_impl(
 
                 const results = [];
                 for (const root of roots.slice(0, Math.max(1, maxCandidates))) {
-                    const question = firstText(root, questionSelectors);
+                    const question = collectQuestion(root, questionSelectors);
                     const options = collectOptions(root, optionSelectors);
-                    const answer = firstText(root, answerSelectors);
+                    const answer = collectAnswer(root, answerSelectors);
 
                     if (!question.text || options.items.length < 2) {
                         continue;
@@ -626,7 +914,7 @@ async def _extract_page_candidates_impl(
         if not isinstance(item, dict):
             continue
 
-        question = _clean_text(str(item.get("question", "")))
+        question = _clean_question_text(str(item.get("question", "")))
         option_values = item.get("option_texts")
         if not isinstance(option_values, list):
             continue
@@ -1830,7 +2118,7 @@ class BrowserRuntime:
             used_selectors["answer"] = answer_selector
 
         return ExtractionCandidate(
-            question=_clean_text(question),
+            question=_clean_question_text(question),
             option_texts=[_clean_text(item) for item in options],
             answer_text=_clean_text(answer_text),
             confidence=round(score, 3),
