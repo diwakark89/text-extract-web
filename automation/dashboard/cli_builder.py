@@ -29,7 +29,7 @@ class DashboardRunOptions:
     auth_file_path: str = "auth/auth_hosts.yaml"
     auto_login_timeout_seconds: int = 40
     humanize: bool = False
-    records_output_name: str = "records.jsonl"
+    records_output_name: str = "records"
 
 
 def _venv_python_path(venv_dir: Path) -> Path:
@@ -89,22 +89,16 @@ def resolve_python_executable(automation_dir: Path) -> str:
 def normalize_records_output_name(name: str) -> str:
     base_name = Path((name or "").strip()).name
     if not base_name:
-        return "records.jsonl"
+        return "records"
 
     candidate = Path(base_name)
-    suffix = candidate.suffix.lower()
-    if suffix == ".jsonl":
-        return candidate.name
-    if suffix == ".json":
-        return candidate.with_suffix(".jsonl").name
-    if suffix:
-        return candidate.with_suffix(".jsonl").name
-    return f"{candidate.name}.jsonl"
+    normalized = candidate.stem if candidate.suffix else candidate.name
+    return normalized or "records"
 
 
 def resolve_records_output_path(automation_dir: Path, name: str) -> Path:
     normalized = normalize_records_output_name(name)
-    return (automation_dir / "output" / normalized).resolve()
+    return (automation_dir / "output" / normalized / f"{normalized}.json").resolve()
 
 
 def build_crawler_command(automation_dir: Path, options: DashboardRunOptions) -> list[str]:

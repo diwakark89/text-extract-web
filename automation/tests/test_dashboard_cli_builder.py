@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from dashboard.cli_builder import (
     DashboardRunOptions,
     build_crawler_command,
+    normalize_records_output_name,
     resolve_python_executable,
     resolve_records_output_path,
 )
@@ -87,7 +88,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("175", command)
 
         output_value = command[command.index("--output") + 1]
-        self.assertEqual(output_value, str(resolve_records_output_path(PROJECT_ROOT, "records.jsonl")))
+        self.assertEqual(output_value, str(resolve_records_output_path(PROJECT_ROOT, "records")))
 
     def test_build_command_without_profile(self) -> None:
         options = DashboardRunOptions(
@@ -104,7 +105,7 @@ class DashboardCommandBuilderTests(unittest.TestCase):
             require_answers=False,
             stop_on_missing_answers=False,
             auto_learn_profiles=False,
-            records_output_name="records.jsonl",
+            records_output_name="records",
             questions_per_file=300,
             expected_count=None,
         )
@@ -129,9 +130,14 @@ class DashboardCommandBuilderTests(unittest.TestCase):
         self.assertIn("300", command)
         self.assertNotIn("--expected-count", command)
 
-    def test_records_json_name_maps_to_jsonl_output_path(self) -> None:
+    def test_legacy_records_names_normalize_to_folder_basename(self) -> None:
+        self.assertEqual(normalize_records_output_name("records.json"), "records")
+        self.assertEqual(normalize_records_output_name("records.jsonl"), "records")
+        self.assertEqual(normalize_records_output_name("nested/path/records.jsonl"), "records")
+
+    def test_records_name_maps_to_base_json_output_path(self) -> None:
         resolved = resolve_records_output_path(PROJECT_ROOT, "records.json")
-        self.assertTrue(str(resolved).endswith(str(Path("output") / "records.jsonl")))
+        self.assertTrue(str(resolved).endswith(str(Path("output") / "records" / "records.json")))
 
     def test_resolve_python_executable_prefers_workspace_repo_venv(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

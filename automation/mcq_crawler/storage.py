@@ -16,105 +16,61 @@ class JsonlStore:
         questions_per_file: int = 300,
         records_written: int = 0,
     ) -> None:
-        self.base_output_path = output_path
-        self.records_json_dir = self.base_output_path.parent / "json"
-        self.base_output_json_path = self._json_mirror_path_for(self.base_output_path)
+        self.base_output_path = self._normalize_records_output_path(output_path)
         self.error_path = error_path
         self.debug_path = debug_path
         self.error_json_path = self.error_path.with_suffix(".json")
         self.questions_per_file = max(1, int(questions_per_file))
         self.records_written = max(0, int(records_written))
-        self.current_output_file_index: int | None = None
-        self.records_in_current_output_file = 0
 
-        self.records_json_dir.mkdir(parents=True, exist_ok=True)
+        self.base_output_path.parent.mkdir(parents=True, exist_ok=True)
         self.error_path.parent.mkdir(parents=True, exist_ok=True)
         self.error_json_path.parent.mkdir(parents=True, exist_ok=True)
         if self.debug_path is not None:
             self.debug_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._initialize_record_target()
+        self._migrate_legacy_base_record_file()
 
-    def _json_mirror_path_for(self, output_path: Path) -> Path:
-        return self.records_json_dir / f"{output_path.stem}.json"
+    def _normalize_records_output_path(self, output_path: Path) -> Path:
+        suffix = output_path.suffix.lower()
+        if suffix == ".json":
+            return output_path
+        if suffix:
+            return output_path.with_suffix(".json")
+        return output_path.with_name(f"{output_path.name}.json")
 
-    def _initialize_record_target(self) -> None:
-        if self.records_written <= self.questions_per_file:
-            self.current_output_file_index = None
-            self.records_in_current_output_file = self.records_written
-            self._set_record_paths(self.base_output_path)
-            return
+    def _chunk_output_path(self, index: int) -> Path:
+        suffix = f"{index:02d}"
+        return self.base_output_path.with_name(f"{self.base_output_path.stem}_{suffix}.json")
 
-        current_index = ((self.records_written - 1) // self.questions_per_file) + 1
-        self.current_output_file_index = current_index
-        self.records_in_current_output_file = self.records_written - (
-            (current_index - 1) * self.questions_per_file
-        )
-        self._set_record_paths(self._split_output_path(current_index))
-
-    def _set_record_paths(self, output_path: Path) -> None:
-        self.output_path = output_path
-        self.output_json_path = self._json_mirror_path_for(self.output_path)
-        self.output_path.parent.mkdir(parents=True, exist_ok=True)
-        self.output_json_path.parent.mkdir(parents=True, exist_ok=True)
-
-        legacy_json_path = self.output_path.with_suffix(".json")
-        if legacy_json_path != self.output_json_path:
-            self._move_if_exists(legacy_json_path, self.output_json_path)
-
-    def _split_output_path(self, index: int) -> Path:
-        return self.base_output_path.with_name(
-            f"{self.base_output_path.stem}_{index}{self.base_output_path.suffix}",
+    def _legacy_base_paths(self) -> tuple[Path, Path]:
+        return (
+            self.base_output_path,
+            self.base_output_path.with_suffix(".jsonl"),
         )
 
-    def _move_if_exists(self, source: Path, destination: Path) -> None:
-        if not source.exists():
+    def _migrate_legacy_base_record_file(self) -> None:
+        first_chunk_path = self._chunk_output_path(1)
+        if first_chunk_path.exists():
             return
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
+
+        for legacy_path in self._legacy_base_paths():
+            if not legacy_path.exists():
+                continue
+            first_chunk_path.parent.mkdir(parents=True, exist_ok=True)
+            legacy_path.replace(first_chunk_path)
             return
-        source.replace(destination)
 
-    def _enable_split_mode_after_boundary(self) -> None:
-        first_chunk_path = self._split_output_path(1)
-        first_chunk_json_path = self._json_mirror_path_for(first_chunk_path)
-
-        self._move_if_exists(self.base_output_path, first_chunk_path)
-        self._move_if_exists(self.base_output_json_path, first_chunk_json_path)
-
-        self.current_output_file_index = 2
-        self.records_in_current_output_file = 0
-        self._set_record_paths(self._split_output_path(2))
-
-    def _prepare_record_path_for_next_append(self) -> None:
+    def _output_path_for_next_record(self) -> Path:
         next_record_total = self.records_written + 1
-
-        if self.current_output_file_index is None:
-            if next_record_total <= self.questions_per_file:
-                return
-            self._enable_split_mode_after_boundary()
-            return
-
-        if self.records_in_current_output_file >= self.questions_per_file:
-            next_index = self.current_output_file_index + 1
-            self.current_output_file_index = next_index
-            self.records_in_current_output_file = 0
-            self._set_record_paths(self._split_output_path(next_index))
+        chunk_index = ((next_record_total - 1) // self.questions_per_file) + 1
+        return self._chunk_output_path(chunk_index)
 
     def append_record(self, record: MCQRecord) -> None:
-        self._prepare_record_path_for_next_append()
-
         payload = record.model_dump(exclude={"source_url", "confidence", "quality_score", "fingerprint", "extracted_at"})
-        line = json.dumps(payload, ensure_ascii=True)
-        with self.output_path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-        self._append_json_array_item(self.output_json_path, payload)
+        self._append_json_array_item(self._output_path_for_next_record(), payload)
 
         self.records_written += 1
-        if self.current_output_file_index is None:
-            self.records_in_current_output_file = self.records_written
-        else:
-            self.records_in_current_output_file += 1
 
     def append_error(self, payload: dict) -> None:
         line = json.dumps(payload, ensure_ascii=True)

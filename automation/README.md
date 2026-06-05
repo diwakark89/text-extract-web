@@ -7,7 +7,7 @@ This folder contains a fresh implementation for automated MCQ extraction.
 - Multi-site extraction with adaptive selectors.
 - Deterministic browser-driven extraction and validation.
 - Local-only execution with Playwright automation.
-- JSONL output with validation and checkpoint-friendly run state.
+- Numbered JSON chunk output with validation and checkpoint-friendly run state.
 - Human feedback loop for captcha/extraction failures.
 - Checkpoint-resume so interrupted runs can continue.
 - Per-domain selector learning from successful runs and user overrides.
@@ -46,18 +46,20 @@ Dashboard capabilities:
 - Start/stop crawler runs using existing CLI options.
 - Resume from checkpoint.
 - View stdout/stderr logs.
-- View `records.jsonl`, `errors.jsonl`, `selector_debug.jsonl`, and checkpoint state.
+- View record chunk JSON files, `errors.jsonl`, `selector_debug.jsonl`, and checkpoint state.
 - Select base and learned domain profiles.
 - Send manual prompt input (`c/o/s/q` or selector JSON) to the running process.
-- Output is written in both JSONL and parseable JSON array mirrors:
-  - `automation/output/records.jsonl` and `automation/output/json/records.json`
+- Records are written as numbered JSON array chunks from the first saved record:
+  - `automation/output/records/records_01.json`
+  - `automation/output/records/records_02.json`
+- Error output remains:
   - `automation/output/errors.jsonl` and `automation/output/errors.json`
 
-When records exceed the per-file limit (`--questions-per-file`, default `300`),
-records rotate into numbered files using `_1`, `_2`, `_3`, and so on:
+`--output` defines the base JSON path used to derive the chunk folder/basename.
+For example, `automation/output/aws/aws.json` produces:
 
-- `automation/output/records_1.jsonl`, `automation/output/records_2.jsonl`, ...
-- `automation/output/json/records_1.json`, `automation/output/json/records_2.json`, ...
+- `automation/output/aws/aws_01.json`
+- `automation/output/aws/aws_02.json`
 
 Detailed step-by-step guide:
 
@@ -74,7 +76,7 @@ python -m unittest discover -s automation/tests -v
 Useful options:
 
 - `--profile` path to YAML selectors profile.
-- `--output` path to JSONL output.
+- `--output` base JSON path used to derive numbered chunk files.
 - `--headless/--no-headless` browser mode.
 - `--max-records` extraction cap.
 - `--questions-per-file` split records into multiple files after N questions (default `300`).

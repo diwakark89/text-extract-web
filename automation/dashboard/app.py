@@ -25,8 +25,9 @@ from dashboard.file_views import (
     load_profile_for_url,
     load_recent_urls,
     read_checkpoint,
+    read_json_array_file,
     read_jsonl_tail,
-    resolve_latest_records_jsonl_path,
+    resolve_latest_records_json_chunk_path,
     save_dashboard_settings,
     save_profile_for_url,
     save_recent_url,
@@ -247,8 +248,8 @@ def main() -> None:
             st.session_state.control_clean_output_before_run = False
     if "records_output_name" not in st.session_state:
         st.session_state.records_output_name = normalize_records_output_name(
-            str(persisted_settings.get("records_output_name") or "records.jsonl").strip()
-            or "records.jsonl",
+            str(persisted_settings.get("records_output_name") or "records").strip()
+            or "records",
         )
     if "control_max_records" not in st.session_state:
         saved_max_records = _as_int(persisted_settings.get("control_max_records"))
@@ -362,9 +363,9 @@ def main() -> None:
     selected_profile = profile_by_value.get(selected_profile_value)
 
     records_output_name = st.sidebar.text_input(
-        "Records file name",
+        "Records folder name",
         key="records_output_name",
-        help="Extension is optional. Dashboard automatically saves records as .jsonl.",
+        help="Used as the output folder and chunk basename. Legacy .json/.jsonl values are normalized automatically.",
     )
     normalized_records_output_name = normalize_records_output_name(records_output_name)
 
@@ -747,14 +748,14 @@ def main() -> None:
 
     default_records_path = resolve_records_output_path(
         AUTOMATION_DIR,
-        str(st.session_state.get("records_output_name") or "records.jsonl"),
+        str(st.session_state.get("records_output_name") or "records"),
     )
     summary_records_path = (
         Path(str(summary.get("records_output_path") or "").strip())
         if isinstance(summary, dict) and str(summary.get("records_output_path") or "").strip()
         else default_records_path
     )
-    records_path = resolve_latest_records_jsonl_path(summary_records_path)
+    records_path = resolve_latest_records_json_chunk_path(summary_records_path)
     errors_path = OUTPUT_DIR / "errors.jsonl"
     debug_path = OUTPUT_DIR / "selector_debug.jsonl"
     tab_records, tab_errors, tab_debug, tab_checkpoint, tab_profiles = st.tabs(
@@ -762,8 +763,11 @@ def main() -> None:
     )
 
     with tab_records:
-        records = read_jsonl_tail(records_path, max_lines=150)
-        st.caption(f"Showing last {len(records)} record lines from {records_path}")
+        if records_path.suffix.lower() == ".jsonl":
+            records = read_jsonl_tail(records_path, max_lines=150)
+        else:
+            records = read_json_array_file(records_path)
+        st.caption(f"Showing {len(records)} records from latest chunk {records_path}")
         st.json(records[-20:] if len(records) > 20 else records)
 
     with tab_errors:

@@ -15,7 +15,7 @@ from mcq_crawler.models import MCQRecord
 
 
 def _records_json_path(root: Path, name: str) -> Path:
-    return root / "json" / name
+    return root / "records" / name
 
 
 def _build_record(index: int) -> MCQRecord:
@@ -36,7 +36,7 @@ class SelectorDebugStorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             store = JsonlStore(
-                output_path=root / "records.jsonl",
+                output_path=root / "records" / "records.json",
                 error_path=root / "errors.jsonl",
                 debug_path=root / "selector_debug.jsonl",
             )
@@ -58,11 +58,11 @@ class SelectorDebugStorageTests(unittest.TestCase):
             self.assertEqual(parsed["event"], "record_saved")
             self.assertEqual(parsed["used_selectors"]["question"], "p.lead")
 
-    def test_records_and_errors_json_mirrors_are_parseable(self) -> None:
+    def test_records_and_errors_json_outputs_are_parseable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             store = JsonlStore(
-                output_path=root / "records.jsonl",
+                output_path=root / "records" / "records.json",
                 error_path=root / "errors.jsonl",
                 debug_path=root / "selector_debug.jsonl",
             )
@@ -85,7 +85,7 @@ class SelectorDebugStorageTests(unittest.TestCase):
             store.append_record(record)
             store.append_error({"reason": "validation_failed", "question": "bad"})
 
-            records_json = json.loads(_records_json_path(root, "records.json").read_text(encoding="utf-8"))
+            records_json = json.loads(_records_json_path(root, "records_01.json").read_text(encoding="utf-8"))
             errors_json = json.loads((root / "errors.json").read_text(encoding="utf-8"))
 
             self.assertIsInstance(records_json, list)
@@ -93,40 +93,19 @@ class SelectorDebugStorageTests(unittest.TestCase):
             self.assertIsInstance(errors_json, list)
             self.assertEqual(errors_json[0]["reason"], "validation_failed")
 
-    def test_records_json_mirror_appends_multiple_items(self) -> None:
+    def test_records_chunk_appends_multiple_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             store = JsonlStore(
-                output_path=root / "records.jsonl",
+                output_path=root / "records" / "records.json",
                 error_path=root / "errors.jsonl",
                 debug_path=root / "selector_debug.jsonl",
             )
 
-            first_record = MCQRecord(
-                index=1,
-                question="Q1",
-                options={"A": "A1", "B": "B1"},
-                correct_answers=["A"],
-                source_url="https://example.com/q1",
-                confidence=0.9,
-                quality_score=0.9,
-                fingerprint="fp1",
-            )
-            second_record = MCQRecord(
-                index=2,
-                question="Q2",
-                options={"A": "A2", "B": "B2"},
-                correct_answers=["B"],
-                source_url="https://example.com/q2",
-                confidence=0.9,
-                quality_score=0.9,
-                fingerprint="fp2",
-            )
+            store.append_record(_build_record(1))
+            store.append_record(_build_record(2))
 
-            store.append_record(first_record)
-            store.append_record(second_record)
-
-            records_json = json.loads(_records_json_path(root, "records.json").read_text(encoding="utf-8"))
+            records_json = json.loads(_records_json_path(root, "records_01.json").read_text(encoding="utf-8"))
             self.assertEqual(len(records_json), 2)
             self.assertEqual(records_json[0]["question"], "Q1")
             self.assertEqual(records_json[1]["question"], "Q2")
@@ -135,7 +114,7 @@ class SelectorDebugStorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             store = JsonlStore(
-                output_path=root / "records.jsonl",
+                output_path=root / "records" / "records.json",
                 error_path=root / "errors.jsonl",
                 debug_path=root / "selector_debug.jsonl",
             )
@@ -147,33 +126,35 @@ class SelectorDebugStorageTests(unittest.TestCase):
             self.assertEqual(len(errors_json), 1)
             self.assertEqual(errors_json[0]["reason"], "timeout")
 
-    def test_legacy_root_records_json_is_migrated_to_json_subfolder(self) -> None:
+    def test_legacy_base_records_json_is_migrated_to_first_chunk(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "records.json").write_text(
+            records_dir = root / "records"
+            records_dir.mkdir(parents=True, exist_ok=True)
+            (records_dir / "records.json").write_text(
                 json.dumps([{"index": 1, "question": "Legacy Q1"}], ensure_ascii=True),
                 encoding="utf-8",
             )
 
             store = JsonlStore(
-                output_path=root / "records.jsonl",
+                output_path=records_dir / "records.json",
                 error_path=root / "errors.jsonl",
             )
             store.append_record(_build_record(2))
 
-            self.assertFalse((root / "records.json").exists())
-            migrated = json.loads(_records_json_path(root, "records.json").read_text(encoding="utf-8"))
+            self.assertFalse((records_dir / "records.json").exists())
+            migrated = json.loads(_records_json_path(root, "records_01.json").read_text(encoding="utf-8"))
             self.assertEqual(len(migrated), 2)
             self.assertEqual(migrated[0]["question"], "Legacy Q1")
             self.assertEqual(migrated[1]["question"], "Q2")
 
 
 class SplitRecordsStorageTests(unittest.TestCase):
-    def test_under_limit_keeps_single_base_records_file(self) -> None:
+    def test_under_limit_writes_first_numbered_chunk(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             store = JsonlStore(
-                output_path=root / "records.jsonl",
+                output_path=root / "records" / "records.json",
                 error_path=root / "errors.jsonl",
                 debug_path=root / "selector_debug.jsonl",
                 questions_per_file=3,
@@ -182,17 +163,18 @@ class SplitRecordsStorageTests(unittest.TestCase):
             for index in range(1, 4):
                 store.append_record(_build_record(index))
 
-            self.assertTrue((root / "records.jsonl").exists())
-            self.assertFalse((root / "records_1.jsonl").exists())
+            self.assertTrue(_records_json_path(root, "records_01.json").exists())
+            self.assertFalse(_records_json_path(root, "records.json").exists())
+            self.assertFalse(_records_json_path(root, "records_02.json").exists())
 
-            records_json = json.loads(_records_json_path(root, "records.json").read_text(encoding="utf-8"))
+            records_json = json.loads(_records_json_path(root, "records_01.json").read_text(encoding="utf-8"))
             self.assertEqual(len(records_json), 3)
 
     def test_crossing_limit_creates_numbered_records_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             store = JsonlStore(
-                output_path=root / "records.jsonl",
+                output_path=root / "records" / "records.json",
                 error_path=root / "errors.jsonl",
                 debug_path=root / "selector_debug.jsonl",
                 questions_per_file=3,
@@ -201,24 +183,19 @@ class SplitRecordsStorageTests(unittest.TestCase):
             for index in range(1, 6):
                 store.append_record(_build_record(index))
 
-            self.assertFalse((root / "records.jsonl").exists())
-            self.assertTrue((root / "records_1.jsonl").exists())
-            self.assertTrue((root / "records_2.jsonl").exists())
+            self.assertFalse(_records_json_path(root, "records.json").exists())
+            self.assertTrue(_records_json_path(root, "records_01.json").exists())
+            self.assertTrue(_records_json_path(root, "records_02.json").exists())
 
-            first_lines = (root / "records_1.jsonl").read_text(encoding="utf-8").splitlines()
-            second_lines = (root / "records_2.jsonl").read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(first_lines), 3)
-            self.assertEqual(len(second_lines), 2)
-
-            first_json = json.loads(_records_json_path(root, "records_1.json").read_text(encoding="utf-8"))
-            second_json = json.loads(_records_json_path(root, "records_2.json").read_text(encoding="utf-8"))
+            first_json = json.loads(_records_json_path(root, "records_01.json").read_text(encoding="utf-8"))
+            second_json = json.loads(_records_json_path(root, "records_02.json").read_text(encoding="utf-8"))
             self.assertEqual(len(first_json), 3)
             self.assertEqual(len(second_json), 2)
 
     def test_resume_offset_continues_writing_in_expected_split_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            output_path = root / "records.jsonl"
+            output_path = root / "records" / "records.json"
             error_path = root / "errors.jsonl"
 
             initial_store = JsonlStore(
@@ -238,16 +215,16 @@ class SplitRecordsStorageTests(unittest.TestCase):
             resumed_store.append_record(_build_record(6))
             resumed_store.append_record(_build_record(7))
 
-            second_lines = (root / "records_2.jsonl").read_text(encoding="utf-8").splitlines()
-            third_lines = (root / "records_3.jsonl").read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(second_lines), 3)
-            self.assertEqual(len(third_lines), 1)
+            second_json = json.loads(_records_json_path(root, "records_02.json").read_text(encoding="utf-8"))
+            third_json = json.loads(_records_json_path(root, "records_03.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(second_json), 3)
+            self.assertEqual(len(third_json), 1)
 
     def test_errors_remain_unsplit_when_records_split(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             store = JsonlStore(
-                output_path=root / "records.jsonl",
+                output_path=root / "records" / "records.json",
                 error_path=root / "errors.jsonl",
                 questions_per_file=2,
             )
@@ -258,8 +235,8 @@ class SplitRecordsStorageTests(unittest.TestCase):
             store.append_error({"reason": "validation_failed", "index": 1})
             store.append_error({"reason": "parse_error", "index": 2})
 
-            self.assertTrue((root / "records_1.jsonl").exists())
-            self.assertTrue((root / "records_2.jsonl").exists())
+            self.assertTrue(_records_json_path(root, "records_01.json").exists())
+            self.assertTrue(_records_json_path(root, "records_02.json").exists())
             self.assertTrue((root / "errors.jsonl").exists())
             self.assertFalse((root / "errors_1.jsonl").exists())
 

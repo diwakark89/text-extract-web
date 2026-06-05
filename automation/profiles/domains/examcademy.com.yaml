@@ -13,9 +13,9 @@ answer:
 _meta:
   selector_success_counts:
     question:
-      .question-content > p: 9708
+      .question-content > p: 10422
     options:
-      .question-content .mc-question > ul > li.mc-option: 9708
+      .question-content .mc-question > ul > li.mc-option: 10422
     answer:
       .question-content .mc-question li.mc-option.mc-option-missed: 9384
-      .question-content .mc-question > ul > li.mc-option.mc-option-missed: 324
+      .question-content .mc-question > ul > li.mc-option.mc-option-missed: 1038

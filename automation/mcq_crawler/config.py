@@ -55,7 +55,7 @@ class RunConfig(BaseModel):
     start_url: str
     profile_path: Path | None = None
     domain_profiles_dir: Path = Path("profiles/domains")
-    output_path: Path = Path("output/records.jsonl")
+    output_path: Path = Path("output/records/records.json")
     error_path: Path = Path("output/errors.jsonl")
     debug_output_path: Path = Path("output/selector_debug.jsonl")
     checkpoint_path: Path = Path("output/checkpoint.json")

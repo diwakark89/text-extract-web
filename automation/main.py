@@ -17,7 +17,10 @@ def run(
     start_url: str = typer.Option(..., help="Start page URL"),
     profile: Path | None = typer.Option(None, help="Path to selectors profile YAML"),
     domain_profiles_dir: Path = typer.Option(Path("profiles/domains"), help="Per-domain learned profiles directory"),
-    output: Path = typer.Option(Path("output/records.jsonl"), help="Output JSONL path"),
+    output: Path = typer.Option(
+        Path("output/records/records.json"),
+        help="Base records JSON path used to derive numbered chunk files like records_01.json",
+    ),
     errors: Path = typer.Option(Path("output/errors.jsonl"), help="Error JSONL path"),
     debug_output: Path = typer.Option(Path("output/selector_debug.jsonl"), help="Selector debug JSONL path"),
     checkpoint: Path = typer.Option(Path("output/checkpoint.json"), help="Checkpoint file path"),

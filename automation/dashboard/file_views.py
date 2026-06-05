@@ -94,17 +94,34 @@ def read_jsonl_tail(file_path: Path, *, max_lines: int = 100) -> list[dict[str, 
     return parsed
 
 
-def resolve_latest_records_jsonl_path(base_file_path: Path) -> Path:
-    if base_file_path.exists():
-        return base_file_path
+def read_json_array_file(file_path: Path) -> list[dict[str, Any]]:
+    if not file_path.exists():
+        return []
 
+    try:
+        loaded = json.loads(file_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return [{"_parse_error": "invalid_json", "raw": file_path.read_text(encoding="utf-8")}]
+
+    if not isinstance(loaded, list):
+        return [{"_parse_error": "json_not_array", "value": loaded}]
+
+    parsed: list[dict[str, Any]] = []
+    for item in loaded:
+        if isinstance(item, dict):
+            parsed.append(item)
+        else:
+            parsed.append({"value": item})
+    return parsed
+
+
+def resolve_latest_records_json_chunk_path(base_file_path: Path) -> Path:
     parent = base_file_path.parent
     if not parent.exists():
         return base_file_path
 
     stem = base_file_path.stem
-    suffix = base_file_path.suffix
-    pattern = f"{stem}_*{suffix}"
+    pattern = f"{stem}_*.json"
 
     latest_path: Path | None = None
     latest_index = -1
@@ -119,6 +136,38 @@ def resolve_latest_records_jsonl_path(base_file_path: Path) -> Path:
         if not tail.isdigit():
             continue
 
+        index = int(tail)
+        if index > latest_index:
+            latest_index = index
+            latest_path = candidate
+
+    if latest_path is not None:
+        return latest_path
+
+    if base_file_path.exists():
+        return base_file_path
+
+    legacy_jsonl_path = base_file_path.with_suffix(".jsonl")
+    if legacy_jsonl_path.exists():
+        return legacy_jsonl_path
+
+    legacy_parent = base_file_path.parent.parent
+    if not legacy_parent.exists():
+        return base_file_path
+
+    legacy_base_path = legacy_parent / f"{stem}.jsonl"
+    if legacy_base_path.exists():
+        return legacy_base_path
+
+    legacy_pattern = f"{stem}_*.jsonl"
+    for candidate in legacy_parent.glob(legacy_pattern):
+        if not candidate.is_file():
+            continue
+        if not candidate.stem.startswith(f"{stem}_"):
+            continue
+        tail = candidate.stem[len(stem) + 1 :]
+        if not tail.isdigit():
+            continue
         index = int(tail)
         if index > latest_index:
             latest_index = index

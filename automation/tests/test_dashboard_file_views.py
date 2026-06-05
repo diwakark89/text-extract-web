@@ -19,8 +19,9 @@ from dashboard.file_views import (
     load_profile_for_url,
     load_recent_urls,
     read_checkpoint,
+    read_json_array_file,
     read_jsonl_tail,
-    resolve_latest_records_jsonl_path,
+    resolve_latest_records_json_chunk_path,
     save_dashboard_settings,
     save_profile_for_url,
     save_recent_url,
@@ -55,7 +56,7 @@ class DashboardFileViewTests(unittest.TestCase):
             output_dir = Path(temp_dir)
             saved_settings = {
                 "control_headless": True,
-                "records_output_name": "records_custom.jsonl",
+                "records_output_name": "records_custom",
                 "control_expected_count": 888,
             }
             save_dashboard_settings(output_dir, saved_settings)
@@ -93,6 +94,16 @@ class DashboardFileViewTests(unittest.TestCase):
             self.assertEqual(rows[0]["index"], 1)
             self.assertEqual(rows[1]["_parse_error"], "invalid_jsonl")
             self.assertEqual(rows[2]["index"], 2)
+
+    def test_read_json_array_file_handles_bad_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "records_01.json"
+            path.write_text("not-json", encoding="utf-8")
+
+            rows = read_json_array_file(path)
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["_parse_error"], "invalid_json")
 
     def test_checkpoint_reader_handles_invalid_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -223,7 +234,9 @@ class DashboardFileViewTests(unittest.TestCase):
             output_dir = Path(temp_dir) / "output"
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            (output_dir / "records.jsonl").write_text("{}\n", encoding="utf-8")
+            records_dir = output_dir / "records"
+            records_dir.mkdir(parents=True, exist_ok=True)
+            (records_dir / "records_01.json").write_text("[]", encoding="utf-8")
             (output_dir / "errors.jsonl").write_text("{}\n", encoding="utf-8")
             screenshots_dir = output_dir / "screenshots"
             screenshots_dir.mkdir(parents=True, exist_ok=True)
@@ -231,9 +244,9 @@ class DashboardFileViewTests(unittest.TestCase):
 
             removed_files, removed_dirs = clean_output_directory_for_run(output_dir)
 
-            self.assertEqual(removed_files, 2)
-            self.assertEqual(removed_dirs, 1)
-            self.assertFalse((output_dir / "records.jsonl").exists())
+            self.assertEqual(removed_files, 1)
+            self.assertEqual(removed_dirs, 2)
+            self.assertFalse(records_dir.exists())
             self.assertFalse((output_dir / "errors.jsonl").exists())
             self.assertFalse(screenshots_dir.exists())
 
@@ -251,12 +264,14 @@ class DashboardFileViewTests(unittest.TestCase):
             )
             recent_store = output_dir / "dashboard_recent_urls.json"
             self.assertTrue(recent_store.exists())
-            (output_dir / "records.jsonl").write_text("{}\n", encoding="utf-8")
+            records_dir = output_dir / "records"
+            records_dir.mkdir(parents=True, exist_ok=True)
+            (records_dir / "records_01.json").write_text("[]", encoding="utf-8")
 
             removed_files, removed_dirs = clean_output_directory_for_run(output_dir)
 
-            self.assertEqual(removed_files, 1)
-            self.assertEqual(removed_dirs, 0)
+            self.assertEqual(removed_files, 0)
+            self.assertEqual(removed_dirs, 1)
             self.assertTrue(recent_store.exists())
             settings = load_dashboard_settings(output_dir)
             self.assertEqual(settings.get("control_headless"), True)
@@ -289,29 +304,31 @@ class DashboardFileViewTests(unittest.TestCase):
             self.assertIsInstance(base_profiles[0], Path)
             self.assertIsInstance(learned_profiles[0], Path)
 
-    def test_resolve_latest_records_path_prefers_base_when_present(self) -> None:
+    def test_resolve_latest_records_path_prefers_latest_chunk(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            output_dir = Path(temp_dir)
-            base_path = output_dir / "records.jsonl"
-            base_path.write_text('{"index": 1}\n', encoding="utf-8")
-            (output_dir / "records_1.jsonl").write_text('{"index": 1}\n', encoding="utf-8")
-            (output_dir / "records_2.jsonl").write_text('{"index": 2}\n', encoding="utf-8")
+            output_dir = Path(temp_dir) / "records"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            base_path = output_dir / "records.json"
+            base_path.write_text('[{"index": 0}]', encoding="utf-8")
+            (output_dir / "records_01.json").write_text('[{"index": 1}]', encoding="utf-8")
+            (output_dir / "records_02.json").write_text('[{"index": 2}]', encoding="utf-8")
 
-            resolved = resolve_latest_records_jsonl_path(base_path)
+            resolved = resolve_latest_records_json_chunk_path(base_path)
 
-            self.assertEqual(resolved, base_path)
+            self.assertEqual(resolved, output_dir / "records_02.json")
 
     def test_resolve_latest_records_path_uses_highest_split_index(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            output_dir = Path(temp_dir)
-            base_path = output_dir / "records.jsonl"
-            (output_dir / "records_1.jsonl").write_text('{"index": 1}\n', encoding="utf-8")
-            (output_dir / "records_2.jsonl").write_text('{"index": 2}\n', encoding="utf-8")
-            (output_dir / "records_alpha.jsonl").write_text('{"index": 99}\n', encoding="utf-8")
+            output_dir = Path(temp_dir) / "records"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            base_path = output_dir / "records.json"
+            (output_dir / "records_01.json").write_text('[{"index": 1}]', encoding="utf-8")
+            (output_dir / "records_12.json").write_text('[{"index": 12}]', encoding="utf-8")
+            (output_dir / "records_alpha.json").write_text('[{"index": 99}]', encoding="utf-8")
 
-            resolved = resolve_latest_records_jsonl_path(base_path)
+            resolved = resolve_latest_records_json_chunk_path(base_path)
 
-            self.assertEqual(resolved, output_dir / "records_2.jsonl")
+            self.assertEqual(resolved, output_dir / "records_12.json")
 
 
 if __name__ == "__main__":
