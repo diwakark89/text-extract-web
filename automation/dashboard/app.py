@@ -369,12 +369,6 @@ def main() -> None:
     )
     normalized_records_output_name = normalize_records_output_name(records_output_name)
 
-    max_records = st.sidebar.number_input(
-        "Max records",
-        min_value=1,
-        max_value=5000,
-        key="control_max_records",
-    )
     expected_count_raw = st.sidebar.text_input(
         "Expected question count",
         key="control_expected_count",
@@ -385,6 +379,12 @@ def main() -> None:
         _clamp_int(expected_count_value, minimum=1, maximum=1000000)
         if expected_count_value is not None
         else None
+    )
+    max_records = st.sidebar.number_input(
+        "Max records",
+        min_value=1,
+        max_value=5000,
+        key="control_max_records",
     )
     questions_per_file = st.sidebar.number_input(
         "Questions per file",
@@ -520,7 +520,7 @@ def main() -> None:
         """
     )
 
-    run_col, stop_col, refresh_col = st.columns([1, 1, 1])
+    run_col, stop_col, refresh_col, continue_col = st.columns([1, 1, 1, 1])
 
     with run_col:
         start_disabled = manager.is_running()
@@ -543,6 +543,14 @@ def main() -> None:
         if st.button("Refresh now", use_container_width=True):
             manager.poll_logs()
             st.rerun()
+
+    with continue_col:
+        if st.button("Continue", use_container_width=True):
+            ok, message = manager.send_input("c")
+            if ok:
+                st.success("Sent Continue")
+            else:
+                st.warning(message)
 
     pending_start = int(st.session_state.get("start_run_requested", 0) or 0)
     if pending_start and not manager.is_running():
@@ -698,12 +706,13 @@ def main() -> None:
         c1.metric("Status", status)
         c2.metric("Started", summary.get("started_at", ""))
         c3.metric("Stopped", summary.get("stopped_at", "-") or "-")
-        st.metric("Total extracted questions", str(total_extracted_questions or 0))
-        st.metric(
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Total extracted questions", str(total_extracted_questions or 0))
+        m2.metric(
             "Expected questions",
             str(expected_questions) if expected_questions is not None else "-",
         )
-        st.metric(
+        m3.metric(
             "Missed questions",
             str(missed_questions) if missed_questions is not None else "-",
         )
@@ -711,37 +720,6 @@ def main() -> None:
         st.write(f"Profile: {summary.get('profile', '')}")
         st.caption("Command")
         st.code(summary.get("command", ""), language="bash")
-
-    st.subheader("Manual input bridge")
-    st.caption(
-        "Use this when the crawler asks for intervention input, or click a named quick action."
-    )
-    manual_value = st.text_input("Send input to running process", value="", key="manual_value")
-
-    send_col, c_col, o_col, s_col, q_col = st.columns([2, 1.4, 1.4, 1.2, 1.2])
-    with send_col:
-        if st.button("Send input", use_container_width=True):
-            ok, message = manager.send_input(manual_value)
-            if ok:
-                st.success(message)
-                st.session_state.manual_value = ""
-            else:
-                st.warning(message)
-
-    quick_actions = [
-        (c_col, "Continue", "c"),
-        (o_col, "Override", "o"),
-        (s_col, "Skip Next", "s"),
-        (q_col, "Quit", "q"),
-    ]
-    for column, label, value in quick_actions:
-        with column:
-            if st.button(label, use_container_width=True):
-                ok, message = manager.send_input(value)
-                if ok:
-                    st.success(f"Sent {label}")
-                else:
-                    st.warning(message)
 
     st.subheader("Live process logs")
     st.text_area("stdout/stderr", value=render_log_text(), height=320)
