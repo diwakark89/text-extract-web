@@ -209,10 +209,12 @@ class CrawlRunner:
                 state=state,
                 candidates=candidates,
             )
+            state.current_page_image_skipped = toolbox._current_page_image_skip_count()
 
             if not candidates:
-                single_candidate = await browser.extract_candidate()
-                candidates = [single_candidate]
+                if state.current_page_image_skipped <= 0:
+                    single_candidate = await browser.extract_candidate()
+                    candidates = [single_candidate]
 
             state.current_page_candidates_found = max(
                 state.current_page_candidates_found,

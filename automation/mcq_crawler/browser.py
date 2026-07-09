@@ -581,15 +581,16 @@ async def _extract_page_candidates_impl(
                     else:
                         cleaned_options = []
 
-                    if question_value and len(cleaned_options) >= 2:
+                    if question_has_media or question_media_only:
+                        last_skip_reason = "image_based_question"
+                    elif question_value and len(cleaned_options) >= 2:
                         payload = {
                             **candidate_payload,
                             "question": question_value,
                             "option_texts": cleaned_options,
                         }
                         break
-
-                    if not question_value:
+                    elif not question_value:
                         if question_media_only or question_has_media:
                             last_skip_reason = "image_based_question"
                         else:
@@ -631,6 +632,22 @@ async def _extract_page_candidates_impl(
             """
             ({ containerSelectors, questionSelectors, optionSelectors, answerSelectors, maxCandidates }) => {
                 const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+                const hasMedia = (node) => {
+                    if (!node) return false;
+                    try {
+                        if (node.matches && node.matches("img, picture, svg, canvas, figure")) {
+                            return true;
+                        }
+                    } catch {
+                        // Ignore selector matching issues and continue with subtree checks.
+                    }
+                    if (node.querySelector("img, picture, svg, canvas, figure")) {
+                        return true;
+                    }
+                    const style = String((node.getAttribute && node.getAttribute("style")) || "").toLowerCase();
+                    return style.includes("background-image");
+                };
+
                 const uniq = (items) => {
                     const out = [];
                     for (const item of items) {
@@ -697,6 +714,7 @@ async def _extract_page_candidates_impl(
                 };
 
                 const collectQuestion = (root, selectors) => {
+                    let mediaOnly = false;
                     for (const selector of selectors) {
                         let nodes = [];
                         try {
@@ -706,7 +724,11 @@ async def _extract_page_candidates_impl(
                         }
 
                         const parts = [];
+                        let selectorHasMedia = false;
                         for (const node of nodes) {
+                            if (hasMedia(node)) {
+                                selectorHasMedia = true;
+                            }
                             for (const textNode of questionTextNodes(node)) {
                                 const text = clean(textNode.innerText);
                                 if (text && !isNoiseText(text) && !parts.includes(text)) {
@@ -716,10 +738,18 @@ async def _extract_page_candidates_impl(
                         }
 
                         if (parts.length > 0) {
-                            return { text: parts.join("\\n\\n"), selector };
+                            return {
+                                text: parts.join("\\n\\n"),
+                                selector,
+                                hasMedia: selectorHasMedia,
+                                mediaOnly: false,
+                            };
+                        }
+                        if (selectorHasMedia) {
+                            mediaOnly = true;
                         }
                     }
-                    return { text: "", selector: "" };
+                    return { text: "", selector: "", hasMedia: false, mediaOnly };
                 };
 
                 const collectOptions = (root, selectors) => {
@@ -881,6 +911,8 @@ async def _extract_page_candidates_impl(
                         question: question.text,
                         option_texts: options.items,
                         answer_text: answer.text,
+                        question_has_media: question.hasMedia,
+                        question_media_only: question.mediaOnly,
                         used_selectors: {
                             question: question.selector,
                             options: options.selector,
@@ -909,12 +941,19 @@ async def _extract_page_candidates_impl(
 
     seen_payloads: set[str] = set()
     duplicate_payloads = 0
+    fallback_image_question_skipped = 0
 
     for item in raw:
         if not isinstance(item, dict):
             continue
 
         question = _clean_question_text(str(item.get("question", "")))
+        question_has_media = bool(item.get("question_has_media"))
+        question_media_only = bool(item.get("question_media_only"))
+        if question_has_media or question_media_only:
+            fallback_image_question_skipped += 1
+            continue
+
         option_values = item.get("option_texts")
         if not isinstance(option_values, list):
             continue
@@ -980,12 +1019,16 @@ async def _extract_page_candidates_impl(
         "best_root_count": best_root_count,
         "root_selector_counts": root_selector_counts,
         "scanned_root_skip_reasons": root_skip_reasons,
-        "image_based_question_skipped_candidates": root_skip_reasons.get("image_based_question", 0),
+        "image_based_question_skipped_candidates": (
+            root_skip_reasons.get("image_based_question", 0) + fallback_image_question_skipped
+        ),
         "image_based_options_skipped_candidates": root_skip_reasons.get("image_based_options", 0),
         "image_based_skipped_candidates": (
             root_skip_reasons.get("image_based_question", 0)
             + root_skip_reasons.get("image_based_options", 0)
+            + fallback_image_question_skipped
         ),
+        "fallback_image_based_question_skipped_candidates": fallback_image_question_skipped,
         "root_exception_count": root_exception_count,
         "raw_payload_count": len(raw),
         "unique_candidate_count": len(candidates),

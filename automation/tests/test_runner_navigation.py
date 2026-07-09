@@ -96,6 +96,7 @@ class _StubBrowser:
         self._extract_page_candidates_responses = list(extract_page_candidates_responses or [])
         self.click_calls = 0
         self.extract_page_candidates_calls = 0
+        self.extract_candidate_calls = 0
         self.human_delay_calls = 0
         self.human_read_pause_calls = 0
         self.human_idle_break_calls = 0
@@ -119,6 +120,7 @@ class _StubBrowser:
         return [_sample_candidate()]
 
     async def extract_candidate(self) -> ExtractionCandidate:
+        self.extract_candidate_calls += 1
         return _sample_candidate()
 
     async def has_next_page(self) -> bool:
@@ -448,6 +450,73 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.stop_reason, "navigation_out_of_scope")
         self.assertEqual(state.current_url, "https://www.examtopics.com/features/modes")
         self.assertTrue(state.notes.get("last_navigation_decision", {}).get("out_of_scope"))
+
+    async def test_image_skipped_page_does_not_fallback_to_single_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+
+            config = RunConfig(
+                start_url="https://examcademy.com/exams/microsoft/az-104/1",
+                domain_profiles_dir=tmp_dir / "profiles" / "domains",
+                output_path=tmp_dir / "output" / "records.jsonl",
+                error_path=tmp_dir / "output" / "errors.jsonl",
+                checkpoint_path=tmp_dir / "output" / "checkpoint.json",
+                screenshot_dir=tmp_dir / "output" / "screenshots",
+                workspace_dir=tmp_dir,
+                max_records=50,
+                max_turns=1,
+                navigation_retry_limit=1,
+                selector_debug=False,
+            )
+
+            runner = CrawlRunner(config)
+            state = RuntimeState(max_records=config.max_records, next_index=1)
+            state.domain = "examcademy.com"
+            state.current_url = config.start_url
+
+            browser = _StubBrowser(
+                has_next_page=False,
+                click_next_result=False,
+                fingerprint_changed=False,
+                extract_page_candidates_responses=[[]],
+            )
+
+            async def _extract_image_only_page(max_candidates: int = 20) -> list[ExtractionCandidate]:
+                browser.extract_page_candidates_calls += 1
+                state.current_page_extraction_diagnostics = {
+                    "image_based_question_skipped_candidates": 1,
+                    "image_based_options_skipped_candidates": 0,
+                    "image_based_skipped_candidates": 1,
+                }
+                return []
+
+            browser.extract_page_candidates = _extract_image_only_page  # type: ignore[method-assign]
+
+            store = JsonlStore(config.output_path, config.error_path)
+            toolbox = CrawlToolbox(
+                browser=browser,
+                store=store,
+                state=state,
+                min_confidence=config.min_confidence,
+                min_quality_score=config.min_quality_score,
+                require_answers=config.require_answers,
+                selector_debug=config.selector_debug,
+            )
+            profile_store = SelectorProfileStore(config.domain_profiles_dir)
+            checkpoint_store = CheckpointStore(config.checkpoint_path)
+
+            await runner._run_deterministic_loop(
+                browser=browser,
+                state=state,
+                profile_store=profile_store,
+                checkpoint_store=checkpoint_store,
+                toolbox=toolbox,
+            )
+
+            self.assertEqual(browser.extract_candidate_calls, 0)
+            self.assertEqual(state.records_written, 0)
+            self.assertEqual(state.current_page_image_skipped, 1)
+            self.assertEqual(state.stop_reason, "verified_no_next_page")
 
     async def test_humanize_mode_invokes_browser_pacing_hooks(self) -> None:
         state, browser = await self._run_once(
