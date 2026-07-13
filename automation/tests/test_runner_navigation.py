@@ -300,6 +300,34 @@ class RunnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(state.current_url, start_url)
             self.assertTrue(state.notes.get("auto_login_succeeded"))
 
+    async def test_prompt_for_login_at_start_auto_continues_when_page_is_already_past_login(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            config = RunConfig(
+                start_url="https://examcademy.com/exams/amazon/aws-certified-cloud-practitioner/1",
+                domain_profiles_dir=tmp_dir / "profiles" / "domains",
+                output_path=tmp_dir / "output" / "records.jsonl",
+                error_path=tmp_dir / "output" / "errors.jsonl",
+                checkpoint_path=tmp_dir / "output" / "checkpoint.json",
+                screenshot_dir=tmp_dir / "output" / "screenshots",
+                workspace_dir=tmp_dir,
+            )
+
+            runner = CrawlRunner(config)
+            state = RuntimeState(max_records=config.max_records, next_index=1)
+            browser = _StubBrowser(
+                has_next_page=False,
+                click_next_result=False,
+                fingerprint_changed=False,
+            )
+
+            with patch("mcq_crawler.runner._async_input", side_effect=AssertionError("prompt should not be shown")):
+                continued = await runner._prompt_for_login_at_start(browser, state)
+
+            self.assertTrue(continued)
+            self.assertEqual(state.current_url, browser.page.url)
+            self.assertFalse(state.captcha_detected)
+
     async def test_low_coverage_retry_keeps_refreshing_until_threshold_recovers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

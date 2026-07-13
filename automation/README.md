@@ -23,6 +23,12 @@ pip install -e .
 playwright install chromium
 ```
 
+If you see websocket keepalive errors during browser shutdown, reinstall the pinned dependency set so the compatible `websockets<15` version is used:
+
+```bash
+pip install --upgrade --force-reinstall "websockets<15"
+```
+
 ## Run
 
 ```bash

@@ -434,6 +434,29 @@ class CrawlRunner:
             return
 
     async def _prompt_for_login_at_start(self, browser: BrowserRuntime, state: RuntimeState) -> bool:
+        current_url = browser.page.url if browser.page and browser.page.url else ""
+        if current_url and not self._is_auth_route(current_url):
+            state.captcha_detected = False
+            state.consecutive_failures = 0
+            state.last_warning = ""
+            state.page_started_at_epoch = time.time()
+            state.current_url = current_url
+            self.console.print("[green]Detected a non-auth page. Continuing crawl automatically.[/green]")
+            return True
+
+        try:
+            content_ready = await browser.wait_for_exam_content_ready(timeout_ms=2000)
+            if content_ready and current_url and not self._is_auth_route(current_url):
+                state.captcha_detected = False
+                state.consecutive_failures = 0
+                state.last_warning = ""
+                state.page_started_at_epoch = time.time()
+                state.current_url = current_url
+                self.console.print("[green]Detected exam content. Continuing crawl automatically.[/green]")
+                return True
+        except Exception:
+            pass
+
         self.console.print("[yellow]Manual login prompt enabled.[/yellow]")
         self.console.print("Complete login/challenge in the opened browser tab before crawling starts.")
         self.console.print("Options: continue (c), quit (q)")
